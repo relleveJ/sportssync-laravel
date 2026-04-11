@@ -1,0 +1,5 @@
+/* Copied from public/Badminton Admin UI/badminton_viewer.css */
+/* Minimal copy for bundling; original file remains in public/Badminton Admin UI */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #111; color: #fff; }
+/* Full styles kept in original public file. */

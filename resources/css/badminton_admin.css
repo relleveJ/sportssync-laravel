@@ -1,0 +1,38 @@
+/* Copied from public/Badminton Admin UI/badminton_admin.css */
+/* ===== RESET & BASE ===== */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background: #111;
+  color: #fff;
+  min-width: 1280px;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* (trimmed - full file copied to resources for bundling) */
+/* Copied from public/Badminton Admin UI/badminton_admin.css */
+/* ===== RESET & BASE ===== */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background: #111;
+  color: #fff;
+  min-width: 1280px;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ===== TOP NAV BAR ===== */
+.top-nav {
+  background: #FFE600;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 24px;
+  height: 60px;
+  flex-shrink: 0;
+}
+/* ... rest of stylesheet omitted for brevity in resources copy - original preserved in public */

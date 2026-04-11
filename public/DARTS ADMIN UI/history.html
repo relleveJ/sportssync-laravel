@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🎯 Match History — Darts Iskorsit</title>
+<style>
+  :root {
+    --bg: #111; --card-bg: #1a1a1a; --text: #f0f0f0; --subtext: #aaa;
+    --border: #333; --yellow: #FFE600; --green: #00cc44; --red: #CC0000;
+    --input-bg: #222;
+  }
+  .light-mode {
+    --bg: #f4f4f4; --card-bg: #ffffff; --text: #111; --subtext: #555;
+    --border: #ccc; --input-bg: #eee;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: Arial, Helvetica, sans-serif; min-height: 100vh; }
+
+  #nav { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; background: #000; border-bottom: 2px solid var(--yellow); flex-wrap: wrap; gap: 8px; }
+  #nav h1 { color: var(--yellow); font-size: 1.3rem; letter-spacing: 2px; }
+  .nav-btn { background: #222; color: var(--yellow); border: 1px solid var(--yellow); padding: 6px 14px; cursor: pointer; font-weight: bold; font-size: .85rem; border-radius: 3px; }
+  .nav-btn:hover { background: var(--yellow); color: #000; }
+
+  #settings { background: #0a0a0a; border-bottom: 1px solid #333; padding: 10px 16px; display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+  .light-mode #settings { background: #e8e8e8; }
+  .toggle-switch { position: relative; display: inline-block; width: 42px; height: 22px; }
+  .toggle-switch input { display: none; }
+  .toggle-slider { position: absolute; inset: 0; background: #444; border-radius: 22px; cursor: pointer; transition: .2s; }
+  .toggle-slider:before { content:''; position: absolute; width: 16px; height: 16px; left: 3px; top: 3px; background: #fff; border-radius: 50%; transition: .2s; }
+  input:checked + .toggle-slider { background: var(--yellow); }
+  input:checked + .toggle-slider:before { transform: translateX(20px); background: #000; }
+
+  #main { max-width: 960px; margin: 0 auto; padding: 20px; }
+  #history-title { color: var(--yellow); font-size: 1.5rem; font-weight: bold; letter-spacing: 2px; margin-bottom: 16px; border-bottom: 2px solid var(--yellow); padding-bottom: 8px; }
+
+  #match-list { display: flex; flex-direction: column; gap: 10px; }
+  .match-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 6px; padding: 14px 18px; cursor: pointer; transition: border-color .15s, box-shadow .15s; }
+  .match-card:hover { border-color: var(--yellow); box-shadow: 0 0 0 1px var(--yellow); }
+  .match-card.selected { border-color: var(--yellow); box-shadow: 0 0 0 2px var(--yellow); }
+  .match-card-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px; }
+  .match-card-title { font-weight: bold; font-size: 1rem; color: var(--yellow); }
+  .match-card-date { font-size: .8rem; color: var(--subtext); }
+  .match-card-meta { display: flex; gap: 12px; margin-top: 6px; font-size: .82rem; color: var(--subtext); flex-wrap: wrap; }
+  .match-card-meta span { background: #222; padding: 2px 8px; border-radius: 3px; }
+  .light-mode .match-card-meta span { background: #eee; }
+  .match-winner { color: var(--green); font-weight: bold; }
+  .status-badge { padding: 2px 8px; border-radius: 10px; font-size: .72rem; font-weight: bold; }
+  .status-completed { background: #004400; color: var(--green); }
+  .status-ongoing { background: #440000; color: #ff6666; }
+
+  #loading { color: var(--subtext); text-align: center; padding: 30px; font-size: 1.1rem; }
+  #no-history { color: var(--subtext); text-align: center; padding: 30px; font-size: 1rem; }
+
+  /* Report inline */
+  #report-section { margin-top: 24px; display: none; }
+  #report-section.show { display: block; }
+  #report-content { background: var(--card-bg); border: 2px solid var(--yellow); border-radius: 8px; padding: 20px; }
+  #report-content h1 { color: var(--yellow); border-bottom: 2px solid var(--yellow); padding-bottom: 10px; margin-bottom: 16px; font-size: 1.3rem; }
+  #report-content h2 { color: var(--yellow); margin: 18px 0 8px; font-size: 1rem; }
+  #report-content table { width: 100%; border-collapse: collapse; font-size: .85rem; margin-bottom: 14px; }
+  #report-content th { background: #222; color: var(--yellow); padding: 7px 10px; border: 1px solid #444; text-align: left; }
+  .light-mode #report-content th { background: #ddd; color: #333; }
+  #report-content td { padding: 5px 10px; border: 1px solid var(--border); }
+  #report-content tr:nth-child(even) td { background: #111; }
+  .light-mode #report-content tr:nth-child(even) td { background: #f0f0f0; }
+  .winner-text { color: var(--green); font-weight: bold; }
+  .export-btns { display: flex; gap: 10px; margin: 14px 0; flex-wrap: wrap; }
+  .export-btns button { background: var(--red); color: #fff; border: none; padding: 9px 16px; cursor: pointer; font-weight: bold; border-radius: 4px; font-size: .85rem; }
+  .export-btns button:hover { filter: brightness(1.2); }
+  .close-report { background: #333; color: var(--yellow); border: 1px solid var(--yellow); padding: 9px 16px; cursor: pointer; font-weight: bold; border-radius: 4px; font-size: .85rem; }
+
+  #report-loading { color: var(--subtext); padding: 20px; text-align: center; }
+
+  @media (max-width: 600px) {
+    #main { padding: 12px; }
+    .match-card { padding: 10px 12px; }
+  }
+</style>
+</head>
+<body>
+
+<div id="nav">
+  <h1>📋 MATCH HISTORY</h1>
+  <div style="display:flex;gap:8px;align-items:center">
+    <label style="color:var(--yellow);font-size:.85rem;font-weight:bold">DARK MODE:</label>
+    <label class="toggle-switch">
+      <input type="checkbox" id="dark-mode-toggle" checked onchange="toggleDark(this.checked)">
+      <span class="toggle-slider"></span>
+    </label>
+    <button class="nav-btn" onclick="location.href='index.html'">← Back to Game</button>
+  </div>
+</div>
+
+<div id="main">
+  <div id="history-title">🎯 MATCH HISTORY</div>
+  <div id="match-list">
+    <div id="loading">Loading match history…</div>
+  </div>
+
+  <div id="report-section">
+    <div id="report-content">
+      <div id="report-inner"></div>
+      <div style="margin-top:16px">
+        <button class="close-report" onclick="closeReport()">✕ Close Report</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let selectedMatchId = null;
+
+function toggleDark(on) {
+  document.body.classList.toggle('light-mode', !on);
+  localStorage.setItem('darkMode', on ? '1' : '0');
+}
+
+(function initDark() {
+  const dark = localStorage.getItem('darkMode');
+  const isDark = dark === null ? true : dark === '1';
+  document.getElementById('dark-mode-toggle').checked = isDark;
+  document.body.classList.toggle('light-mode', !isDark);
+})();
+
+function escH(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function loadHistory() {
+  fetch('get_history.php')
+    .then(r => r.json())
+    .then(data => {
+      const list = document.getElementById('match-list');
+      if (!data.length) {
+        list.innerHTML = '<div id="no-history">No saved matches found.</div>';
+        return;
+      }
+      list.innerHTML = '';
+      data.forEach(m => {
+        const card = document.createElement('div');
+        card.className = 'match-card';
+        card.id = 'mcard-' + m.id;
+        const date = new Date(m.created_at).toLocaleString();
+        const statusClass = m.status === 'completed' ? 'status-completed' : 'status-ongoing';
+        card.innerHTML = `
+          <div class="match-card-header">
+            <div class="match-card-title">Match #${m.id} — ${escH(m.game_type)} Game</div>
+            <div style="display:flex;gap:8px;align-items:center">
+              <span class="status-badge ${statusClass}">${m.status.toUpperCase()}</span>
+              <span class="match-card-date">${date}</span>
+            </div>
+          </div>
+          <div class="match-card-meta">
+            <span>Legs to Win: ${m.legs_to_win}</span>
+            <span>Mode: ${escH(m.mode)}</span>
+            ${m.total_legs ? `<span>Total Legs: ${m.total_legs}</span>` : ''}
+            ${m.winner_name ? `<span class="match-winner">🏆 ${escH(m.winner_name)}</span>` : ''}
+          </div>
+        `;
+        card.onclick = () => loadMatchDetail(m.id);
+        list.appendChild(card);
+      });
+    })
+    .catch(() => {
+      document.getElementById('match-list').innerHTML = '<div id="no-history">Could not load history (check server connection).</div>';
+    });
+}
+
+function loadMatchDetail(matchId) {
+  // Highlight selected card
+  document.querySelectorAll('.match-card').forEach(c => c.classList.remove('selected'));
+  const selCard = document.getElementById('mcard-' + matchId);
+  if (selCard) selCard.classList.add('selected');
+
+  selectedMatchId = matchId;
+  const section = document.getElementById('report-section');
+  const inner = document.getElementById('report-inner');
+  section.classList.add('show');
+  inner.innerHTML = '<div id="report-loading">Loading match details…</div>';
+  section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  fetch('get_match.php?match_id=' + matchId)
+    .then(r => r.json())
+    .then(data => {
+      if (!data.success) { inner.innerHTML = '<p style="color:var(--red)">Error loading match.</p>'; return; }
+      inner.innerHTML = renderMatchReport(data, matchId);
+    })
+    .catch(() => { inner.innerHTML = '<p style="color:var(--red)">Network error.</p>'; });
+}
+
+function renderMatchReport(data, matchId) {
+  const m = data.match;
+  const players = {};
+  data.players.forEach(p => players[p.id] = p);
+  const legs = data.legs;
+  const date = new Date(m.created_at).toLocaleString();
+
+  // legs won per player
+  const legsWon = {};
+  const throwTotals = {};
+  const throwCounts = {};
+  data.players.forEach(p => { legsWon[p.id] = 0; throwTotals[p.id] = 0; throwCounts[p.id] = 0; });
+  legs.forEach(leg => {
+    if (leg.winner_player_id) legsWon[leg.winner_player_id] = (legsWon[leg.winner_player_id]||0) + 1;
+    Object.entries(leg.throws||{}).forEach(([pid, throws]) => {
+      throws.forEach(t => {
+        if (!t.is_bust) {
+          throwTotals[pid] = (throwTotals[pid]||0) + parseInt(t.throw_value);
+          throwCounts[pid] = (throwCounts[pid]||0) + 1;
+        }
+      });
+    });
+  });
+
+  const sortedPlayers = [...data.players].sort((a,b) => (legsWon[b.id]||0) - (legsWon[a.id]||0));
+
+  let html = `<h1>🎯 ${escH(m.game_type)} Match Report — #${matchId}</h1>`;
+  html += `<div class="export-btns">
+    <button onclick="window.open('report_export.php?match_id=${matchId}&format=html&download=1','_blank')">⬇ Save as HTML</button>
+    <button onclick="window.open('report_export.php?match_id=${matchId}&format=excel','_blank')">⬇ Save as Excel</button>
+    <button onclick="window.open('report_export.php?match_id=${matchId}&format=print','_blank')">🖨 Print / PDF</button>
+  </div>`;
+
+  html += `<h2>Match Overview</h2>
+  <table><tr><th>Game Type</th><th>Legs to Win</th><th>Mode</th><th>Date</th><th>Winner</th></tr>
+  <tr><td>${escH(m.game_type)}</td><td>${m.legs_to_win}</td><td>${escH(m.mode)}</td><td>${date}</td>
+  <td class="winner-text">${escH(m.winner_name||'—')}</td></tr></table>`;
+
+  html += `<h2>Player Roster</h2>
+  <table><tr><th>Player #</th><th>Name</th><th>Team</th></tr>`;
+  data.players.forEach(p => {
+    html += `<tr><td>${p.player_number}</td><td>${escH(p.player_name)}</td><td>${escH(p.team_name||'—')}</td></tr>`;
+  });
+  html += `</table>`;
+
+  if (legs.length) {
+    html += `<h2>Leg-by-Leg Results</h2>
+    <table><tr><th>Leg #</th><th>Winner</th>`;
+    data.players.forEach(p => { html += `<th>${escH(p.player_name)} Throws</th>`; });
+    html += `</tr>`;
+    legs.forEach(leg => {
+      html += `<tr><td>${leg.leg_number}</td>`;
+      html += `<td>${leg.winner_player_id && players[leg.winner_player_id] ? escH(players[leg.winner_player_id].player_name) : '—'}</td>`;
+      data.players.forEach(p => {
+        const ts = (leg.throws||{})[p.id] || [];
+        const vals = ts.map(t => t.is_bust ? `<span style="color:#e55">BUST(${t.throw_value})</span>` : t.throw_value).join(', ');
+        html += `<td>${vals||'—'}</td>`;
+      });
+      html += `</tr>`;
+    });
+    html += `</table>`;
+  }
+
+  html += `<h2>Final Standings</h2>
+  <table><tr><th>Rank</th><th>Player</th><th>Team</th><th>Legs Won</th><th>Avg Throw/Leg</th></tr>`;
+  sortedPlayers.forEach((p, i) => {
+    const avg = (throwCounts[p.id]||0) > 0 ? (throwTotals[p.id] / throwCounts[p.id]).toFixed(1) : '—';
+    html += `<tr><td>${i+1}</td><td class="${i===0?'winner-text':''}">${escH(p.player_name)}</td>
+      <td>${escH(p.team_name||'—')}</td><td>${legsWon[p.id]||0}</td><td>${avg}</td></tr>`;
+  });
+  html += `</table>`;
+
+  return html;
+}
+
+function closeReport() {
+  document.getElementById('report-section').classList.remove('show');
+  document.querySelectorAll('.match-card').forEach(c => c.classList.remove('selected'));
+  selectedMatchId = null;
+}
+
+loadHistory();
+</script>
+</body>
+</html>

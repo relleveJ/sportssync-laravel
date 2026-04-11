@@ -1,0 +1,14 @@
+/* Copied from resources/css/badminton_admin.css */
+/* ===== RESET & BASE ===== */
+, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background: #111;
+  color: #fff;
+  min-width: 1280px;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* (trimmed) Original stylesheet preserved in public/Badminton Admin UI/ for parity */

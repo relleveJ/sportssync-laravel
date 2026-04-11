@@ -1,0 +1,14 @@
+{
+  "name": "sportssync-ws-server",
+  "version": "1.0.0",
+  "description": "Lightweight WebSocket broadcaster for Sportssync admin/viewer realtime updates",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "ws": "^8.13.0"
+  }
+}
