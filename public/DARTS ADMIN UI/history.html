@@ -88,7 +88,7 @@
       <input type="checkbox" id="dark-mode-toggle" checked onchange="toggleDark(this.checked)">
       <span class="toggle-slider"></span>
     </label>
-    <button class="nav-btn" onclick="location.href='index.html'">← Back to Game</button>
+    <button class="nav-btn" onclick="location.href='index.php'">← Back to Game</button>
   </div>
 </div>
 
@@ -147,18 +147,49 @@ function loadHistory() {
           <div class="match-card-header">
             <div class="match-card-title">Match #${m.id} — ${escH(m.game_type)} Game</div>
             <div style="display:flex;gap:8px;align-items:center">
-              <span class="status-badge ${statusClass}">${m.status.toUpperCase()}</span>
+              <span class="status-badge ${statusClass} js-status">${m.status.toUpperCase()}</span>
               <span class="match-card-date">${date}</span>
             </div>
           </div>
           <div class="match-card-meta">
-            <span>Legs to Win: ${m.legs_to_win}</span>
-            <span>Mode: ${escH(m.mode)}</span>
+            <span>Game: <span class="js-type">${escH(m.game_type)}</span></span>
+            <span>Legs to Win: <span class="js-best">${m.legs_to_win}</span></span>
+            <span>Mode: <span class="js-mode">${escH(m.mode)}</span></span>
             ${m.total_legs ? `<span>Total Legs: ${m.total_legs}</span>` : ''}
             ${m.winner_name ? `<span class="match-winner">🏆 ${escH(m.winner_name)}</span>` : ''}
           </div>
         `;
-        card.onclick = () => loadMatchDetail(m.id);
+        const meta = card.querySelector('.match-card-meta');
+        let winnerEl = card.querySelector('.match-winner');
+        if (!winnerEl && meta) {
+          winnerEl = document.createElement('span');
+          winnerEl.className = 'match-winner';
+          meta.appendChild(winnerEl);
+        }
+        if (winnerEl) winnerEl.classList.add('js-winner');
+        if (meta) {
+          const editBtn = document.createElement('button');
+          editBtn.type = 'button';
+          editBtn.className = 'nav-btn';
+          editBtn.title = 'Edit this saved match';
+          editBtn.textContent = 'Edit';
+          editBtn.addEventListener('click', (ev) => {
+            ev.preventDefault();
+            ev.stopPropagation();
+            if (confirm('Are you sure you want to edit this match? Changes will be saved to the database.')) {
+              if (typeof openMatchEdit === 'function') {
+                openMatchEdit(m.id);
+              } else {
+                alert('Edit dialog not available yet. Please refresh the page.');
+              }
+            }
+          });
+          meta.appendChild(editBtn);
+        }
+        card.onclick = () => {
+          // Open server-generated report for the clicked match
+          window.open('darts_report.php?match_id=' + encodeURIComponent(m.id), '_blank');
+        };
         list.appendChild(card);
       });
     })
@@ -270,7 +301,13 @@ function closeReport() {
   selectedMatchId = null;
 }
 
+window.MATCH_HISTORY_EDIT_CONFIG = {
+  endpoint: new URL('update_match.php', window.location.href).href,
+  kind: 'darts',
+  rowPrefix: 'mcard-'
+};
 loadHistory();
 </script>
+<script src="../match_history_edit.js"></script>
 </body>
 </html>

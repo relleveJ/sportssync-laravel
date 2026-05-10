@@ -1,3 +1,9 @@
+<?php
+if (!defined('LARAVEL_WRAPPER')) {
+    require_once __DIR__ . '/../auth.php';
+    requireRole('admin');
+}
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -6,20 +12,26 @@
 <title>Basketball Iskorsit</title>
 <link rel="stylesheet" href="style.css">
 </head>
-<body>
+<body data-sport="basketball">
 
 <!-- NAV -->
 <nav>
   <div class="nav-score-left">
-    <div class="nav-left-actions">
-      <button class="btn-reset" onclick="resetMatch()" title="Reset match and clear all data">Reset</button>
-      <button class="btn-delete-server" onclick="deleteSavedMatch()" title="Delete saved match from server database">Delete Saved Match</button>
+      <div class="nav-left-actions">
+      <a href="/" class="back-btn">← Back to Dashboard</a>
+      <button class="btn-new" onclick="bbNewMatch()" title="Create a new match and reset live state">➕ New Match</button>
+      <button class="basketball-btn-reset" onclick="bbResetMatch(false, true)" title="Reset match and clear all data">Reset</button>
+      <button class="btn-matches" onclick="window.location.href='basketball_matches_admin.php'" title="Open match history">📚 Matches</button>      <button class="btn-delete-server" onclick="bbDeleteSavedMatch()" title="Delete saved match from server database">Delete Saved Match</button>
     </div>
   </div>
   <div class="nav-center">
     <div class="nav-score-pill team-a">
       <span class="nav-score-team" id="labelA">TEAM A</span>
-      <span class="nav-score-num"  id="scoreA">0</span>
+      <div class="nav-score-row">
+        <button class="nav-score-btn minus" onclick="adjustTeamScore('A',-1)" title="Decrease team A score">−</button>
+        <span class="nav-score-num"  id="scoreA">0</span>
+        <button class="nav-score-btn plus" onclick="adjustTeamScore('A',1)" title="Increase team A score">+</button>
+      </div>
       <span class="nav-live-badge">&#9679; LIVE</span>
     </div>
     <span class="nav-vs">VS</span>
@@ -30,21 +42,24 @@
     <span class="nav-vs">VS</span>
     <div class="nav-score-pill team-b">
       <span class="nav-score-team" id="labelB">TEAM B</span>
-      <span class="nav-score-num"  id="scoreB">0</span>
+      <div class="nav-score-row">
+        <button class="nav-score-btn minus" onclick="adjustTeamScore('B',-1)" title="Decrease team B score">−</button>
+        <span class="nav-score-num"  id="scoreB">0</span>
+        <button class="nav-score-btn plus" onclick="adjustTeamScore('B',1)" title="Increase team B score">+</button>
+      </div>
       <span class="nav-live-badge">&#9679; LIVE</span>
     </div>
   </div>
   <div class="nav-score-right">
-    <button class="btn-view-toggle two-sided" id="viewToggleBtn" onclick="toggleViewMode()" title="Switch between one-sided and two-sided view">&#8644; Two-Sided</button>
-    <button class="btn-save" onclick="saveFile()">&#128190; Save</button>
-    <a href="../landingpage.php" class="back-btn">← Back to sports</a>
+    <button class="btn-view-toggle two-sided" id="bbViewToggleBtn" onclick="toggleViewMode()" title="Switch between one-sided and two-sided view">&#8644; Two-Sided</button>
+    <button class="btn-save" onclick="bbSaveFile()">&#128190; Save</button>
   </div>
 </nav>
 
 <!-- COMMITTEE / OFFICIAL BAR -->
-<div class="committee-bar">
-  <label class="committee-label" for="committeeInput">Committee / Official:</label>
-  <input type="text" id="committeeInput" class="committee-input" placeholder="Enter committee or official name&#8230;" />
+<div class="bbCommitteeBar">
+  <label class="bbCommitteeLabel" for="bbCommitteeInput">Committee / Official:</label>
+  <input type="text" id="bbCommitteeInput" class="bbCommitteeInput" placeholder="Enter committee or official name&#8230;" />
 </div>
 
 <!-- MAIN GRID -->
@@ -67,7 +82,7 @@
           <span class="tsb-label">Team Foul</span>
           <div class="tsb-controls">
             <button class="tsb-btn minus" onclick="adjustTsb('A','foul',-1)">&#8722;</button>
-            <div class="tsb-box"><span class="tsb-num" id="tsbA_foul">0</span></div>
+            <div class="tsb-box"><span class="tsb-num" id="bbTsbAFoul">0</span></div>
             <button class="tsb-btn plus"  onclick="adjustTsb('A','foul', 1)">+</button>
           </div>
         </div>
@@ -76,7 +91,7 @@
           <span class="tsb-label">Timeout</span>
           <div class="tsb-controls">
             <button class="tsb-btn minus" onclick="adjustTsb('A','timeout',-1)">&#8722;</button>
-            <div class="tsb-box"><span class="tsb-num" id="tsbA_timeout">0</span></div>
+            <div class="tsb-box"><span class="tsb-num" id="bbTsbATimeout">0</span></div>
             <button class="tsb-btn plus"  onclick="adjustTsb('A','timeout', 1)">+</button>
           </div>
         </div>
@@ -87,7 +102,7 @@
           <thead><tr>
             <th class="th-select-all">
               <div class="th-select-all-inner">
-                <input type="checkbox" class="select-all-cb" id="selectAllA" onchange="toggleSelectAll('A', this)" title="Select / deselect all" />
+                <input type="checkbox" class="select-all-cb" id="bbSelectAllA" onchange="toggleSelectAll('A', this)" title="Select / deselect all" />
                 <button class="btn-del-selected" onclick="deleteSelected('A')" title="Delete selected players">&#128465; Del</button>
               </div>
             </th>
@@ -101,7 +116,7 @@
           <tbody id="tbodyA"></tbody>
         </table>
         <div class="add-player-wrap">
-          <button class="btn-add-player" onclick="addPlayer('A')">ADD PLAYER +</button>
+          <button class="bbBtnAddPlayer" onclick="bbAddPlayer('A')">ADD PLAYER +</button>
         </div>
       </div>
     </div>
@@ -116,7 +131,7 @@
           <span class="tsb-label">Team Foul</span>
           <div class="tsb-controls">
             <button class="tsb-btn minus" onclick="adjustTsb('B','foul',-1)">&#8722;</button>
-            <div class="tsb-box"><span class="tsb-num" id="tsbB_foul">0</span></div>
+            <div class="tsb-box"><span class="tsb-num" id="bbTsbBFoul">0</span></div>
             <button class="tsb-btn plus"  onclick="adjustTsb('B','foul', 1)">+</button>
           </div>
         </div>
@@ -125,7 +140,7 @@
           <span class="tsb-label">Timeout</span>
           <div class="tsb-controls">
             <button class="tsb-btn minus" onclick="adjustTsb('B','timeout',-1)">&#8722;</button>
-            <div class="tsb-box"><span class="tsb-num" id="tsbB_timeout">0</span></div>
+            <div class="tsb-box"><span class="tsb-num" id="bbTsbBTimeout">0</span></div>
             <button class="tsb-btn plus"  onclick="adjustTsb('B','timeout', 1)">+</button>
           </div>
         </div>
@@ -136,7 +151,7 @@
           <thead><tr>
             <th class="th-select-all">
               <div class="th-select-all-inner">
-                <input type="checkbox" class="select-all-cb" id="selectAllB" onchange="toggleSelectAll('B', this)" title="Select / deselect all" />
+                <input type="checkbox" class="select-all-cb" id="bbSelectAllB" onchange="toggleSelectAll('B', this)" title="Select / deselect all" />
                 <button class="btn-del-selected" onclick="deleteSelected('B')" title="Delete selected players">&#128465; Del</button>
               </div>
             </th>
@@ -150,7 +165,7 @@
           <tbody id="tbodyB"></tbody>
         </table>
         <div class="add-player-wrap">
-          <button class="btn-add-player" onclick="addPlayer('B')">ADD PLAYER +</button>
+          <button class="bbBtnAddPlayer" onclick="bbAddPlayer('B')">ADD PLAYER +</button>
         </div>
       </div>
     </div>
@@ -208,13 +223,13 @@
         <div class="counter-label">Team Foul</div>
         <div class="counter-row">
           <button class="rbtn minus" onclick="adjustTsb('A','foul',-1)">&#8722;</button>
-          <div class="counter-box"><span class="counter-num" id="right_tsbA_foul">0</span></div>
+          <div class="counter-box"><span class="counter-num" id="bbRightTsbAFoul">0</span></div>
           <button class="rbtn plus"  onclick="adjustTsb('A','foul', 1)">+</button>
         </div>
         <div class="counter-label">Timeout</div>
         <div class="counter-row">
           <button class="rbtn minus" onclick="adjustTsb('A','timeout',-1)">&#8722;</button>
-          <div class="counter-box"><span class="counter-num" id="right_tsbA_timeout">0</span></div>
+          <div class="counter-box"><span class="counter-num" id="bbRightTsbATimeout">0</span></div>
           <button class="rbtn plus"  onclick="adjustTsb('A','timeout', 1)">+</button>
         </div>
       </div>
@@ -223,13 +238,13 @@
         <div class="counter-label">Team Foul</div>
         <div class="counter-row">
           <button class="rbtn minus" onclick="adjustTsb('B','foul',-1)">&#8722;</button>
-          <div class="counter-box"><span class="counter-num" id="right_tsbB_foul">0</span></div>
+          <div class="counter-box"><span class="counter-num" id="bbRightTsbBFoul">0</span></div>
           <button class="rbtn plus"  onclick="adjustTsb('B','foul', 1)">+</button>
         </div>
         <div class="counter-label">Timeout</div>
         <div class="counter-row">
           <button class="rbtn minus" onclick="adjustTsb('B','timeout',-1)">&#8722;</button>
-          <div class="counter-box"><span class="counter-num" id="right_tsbB_timeout">0</span></div>
+          <div class="counter-box"><span class="counter-num" id="bbRightTsbBTimeout">0</span></div>
           <button class="rbtn plus"  onclick="adjustTsb('B','timeout', 1)">+</button>
         </div>
       </div>
@@ -237,7 +252,7 @@
         <div class="counter-label">Quarter</div>
         <div class="counter-row">
           <button class="rbtn minus" onclick="adjustShared('quarter',-1)">&#8722;</button>
-          <div class="counter-box"><span class="counter-num" id="per_quarterVal">1</span></div>
+          <div class="counter-box"><span class="counter-num" id="bbPerQuarterVal">1</span></div>
           <button class="rbtn plus"  onclick="adjustShared('quarter', 1)">+</button>
         </div>
       </div>
@@ -248,7 +263,7 @@
         <div class="counter-label">Quarter</div>
         <div class="counter-row">
           <button class="rbtn minus" onclick="adjustShared('quarter',-1)">&#8722;</button>
-          <div class="counter-box"><span class="counter-num" id="quarterVal">1</span></div>
+          <div class="counter-box"><span class="counter-num" id="bbQuarterVal">1</span></div>
           <button class="rbtn plus"  onclick="adjustShared('quarter', 1)">+</button>
         </div>
       </div>

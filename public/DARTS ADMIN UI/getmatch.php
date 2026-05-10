@@ -10,7 +10,15 @@ if (!$match_id) {
 }
 
 // Match row
-$mstmt = $conn->prepare("SELECT * FROM matches WHERE id=?");
+$prefix = '';
+$r = $conn->query("SHOW TABLES LIKE 'darts_matches'");
+if ($r && $r->num_rows) $prefix = 'darts_';
+$matchesTable = $prefix . 'matches';
+$playersTable = $prefix . 'players';
+$legsTable = $prefix . 'legs';
+$throwsTable = $prefix . 'throws';
+$summaryTable = $prefix . 'match_summary';
+$mstmt = $conn->prepare("SELECT * FROM `{$matchesTable}` WHERE id=?");
 $mstmt->bind_param('i', $match_id);
 $mstmt->execute();
 $match = $mstmt->get_result()->fetch_assoc();
@@ -22,14 +30,14 @@ if (!$match) {
 }
 
 // Summary
-$sstmt = $conn->prepare("SELECT * FROM match_summary WHERE match_id=?");
+$sstmt = $conn->prepare("SELECT * FROM `{$summaryTable}` WHERE match_id=?");
 $sstmt->bind_param('i', $match_id);
 $sstmt->execute();
 $summary = $sstmt->get_result()->fetch_assoc();
 $sstmt->close();
 
 // Players
-$pstmt = $conn->prepare("SELECT * FROM players WHERE match_id=? ORDER BY player_number");
+$pstmt = $conn->prepare("SELECT * FROM `{$playersTable}` WHERE match_id=? ORDER BY player_number");
 $pstmt->bind_param('i', $match_id);
 $pstmt->execute();
 $players_res = $pstmt->get_result();
@@ -40,7 +48,7 @@ while ($row = $players_res->fetch_assoc()) {
 $pstmt->close();
 
 // Legs + throws
-$lstmt = $conn->prepare("SELECT * FROM legs WHERE match_id=? ORDER BY leg_number");
+$lstmt = $conn->prepare("SELECT * FROM `{$legsTable}` WHERE match_id=? ORDER BY leg_number");
 $lstmt->bind_param('i', $match_id);
 $lstmt->execute();
 $legs_res = $lstmt->get_result();
@@ -49,7 +57,7 @@ while ($leg = $legs_res->fetch_assoc()) {
     $lid = $leg['id'];
     // Get throws for this leg
     $tstmt = $conn->prepare(
-        "SELECT * FROM throws WHERE leg_id=? ORDER BY player_id, throw_number"
+        "SELECT * FROM `{$throwsTable}` WHERE leg_id=? ORDER BY player_id, throw_number"
     );
     $tstmt->bind_param('i', $lid);
     $tstmt->execute();

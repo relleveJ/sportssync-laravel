@@ -33,18 +33,74 @@ try {
 } catch (_) {}
 
 // WebSocket relay client — receive cross-device updates from ws-server
+// Keep references to remote WS objects so we can rejoin rooms on new_match
+let _wsRemote = null;
+let _ws = null;
+
+// Adopt a newly-created match: persist session id, fetch/apply canonical state,
+// rejoin WS rooms and render payload. Hoisted function so WS handlers can call it.
+function adoptNewMatch(msg) {
+  try {
+    const newId = msg && (msg.match_id || (msg.payload && msg.payload.match_id)) ? String(msg.match_id || (msg.payload && msg.payload.match_id)) : null;
+    if (!newId) return;
+    try { sessionStorage.setItem('basketball_match_id', String(newId)); } catch(_) {}
+    try { window.__matchId = String(newId); } catch(_) {}
+
+    // If payload present apply immediately; otherwise fetch canonical state
+    if (msg && msg.payload) {
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(msg.payload)); } catch(_) {}
+      try { scheduleRender(msg.payload); } catch(_) {}
+    } else {
+      (async function(){
+        try {
+          const res = await fetch('state.php?match_id=' + encodeURIComponent(newId));
+          const j = await res.json();
+          if (j && j.success && j.payload) {
+            try { localStorage.setItem(STORAGE_KEY, JSON.stringify(j.payload)); } catch(_) {}
+            try { scheduleRender(j.payload); } catch(_) {}
+          }
+        } catch(_) {}
+      })();
+    }
+
+    // Rejoin rooms on any open WS connections
+    try {
+      const joinMsg = JSON.stringify({ type: 'join', match_id: String(newId) });
+      if (_ws && _ws.readyState === WebSocket.OPEN) try { _ws.send(joinMsg); } catch(_) {}
+      if (_wsRemote && _wsRemote.readyState === WebSocket.OPEN) try { _wsRemote.send(joinMsg); } catch(_) {}
+    } catch(_) {}
+
+    // Small transient UI hint
+    try {
+      const id = 'viewer_new_match_info';
+      let el = document.getElementById(id);
+      if (!el) { el = document.createElement('div'); el.id = id; el.style.position = 'fixed'; el.style.left = '12px'; el.style.top = '12px'; el.style.zIndex = 99999; el.style.background = 'rgba(0,0,0,0.7)'; el.style.color = '#fff'; el.style.padding = '8px 10px'; el.style.borderRadius = '6px'; document.body.appendChild(el); }
+      el.textContent = 'Switched to new match ' + String(newId);
+      setTimeout(() => { try { if (el && el.parentNode) el.parentNode.removeChild(el); } catch(_) {} }, 3500);
+    } catch(_) {}
+  } catch(_) {}
+}
 try {
   if (location && location.hostname) {
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
     let url = proto + '//' + location.hostname + ':3000';
     if (window.__wsToken) url += '?token=' + encodeURIComponent(window.__wsToken);
-    const _wsRemote = new WebSocket(url);
+    _wsRemote = new WebSocket(url);
     _wsRemote.addEventListener('open', function () {
-      try { const mid = (window.MATCH_DATA && MATCH_DATA.match_id) ? MATCH_DATA.match_id : (window.__matchId || null); if (mid) _wsRemote.send(JSON.stringify({ type: 'join', match_id: String(mid) })); } catch(_) {}
+      try {
+        const DEFAULT_ROOM_ID = (typeof window.__defaultRoomId !== 'undefined') ? String(window.__defaultRoomId) : '0';
+        const mid = (window.MATCH_DATA && MATCH_DATA.match_id) ? String(MATCH_DATA.match_id) : (window.__matchId || (new URLSearchParams(location.search).get('match_id')) || DEFAULT_ROOM_ID);
+        _wsRemote.send(JSON.stringify({ type: 'join', match_id: String(mid) }));
+      } catch(_) {}
     });
     _wsRemote.addEventListener('message', function (ev) {
       try {
         const msg = JSON.parse(ev.data);
+        // handle global new_match events so viewers adopt the new room
+        if (msg && msg.type === 'new_match') {
+          try { adoptNewMatch(msg); } catch(_) {}
+          return;
+        }
         // server rebroadcasts the original `{ type, payload }` messages
         if (msg && msg.payload) scheduleRender(msg.payload);
       } catch (_) { /* ignore parse errors */ }
@@ -67,8 +123,9 @@ try {
     (async function fetchServerState() {
       try {
         const urlParams = new URLSearchParams(location.search);
-        const mid = (window.MATCH_DATA && MATCH_DATA.match_id) ? MATCH_DATA.match_id : (window.__matchId || urlParams.get('match_id'));
-        if (!mid) return;
+        const DEFAULT_ROOM_ID = (typeof window.__defaultRoomId !== 'undefined') ? String(window.__defaultRoomId) : '0';
+        const mid = (window.MATCH_DATA && MATCH_DATA.match_id) ? String(MATCH_DATA.match_id) : (window.__matchId || urlParams.get('match_id') || DEFAULT_ROOM_ID);
+        // Always attempt to fetch server state for the chosen room
         const res = await fetch('state.php?match_id=' + encodeURIComponent(mid));
         const j = await res.json();
         if (j && j.success && j.payload) {
@@ -77,26 +134,40 @@ try {
         }
       } catch (e) {}
     })();
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    let url = proto + '//' + location.hostname + ':3000';
     if (window.__wsToken) url += '?token=' + encodeURIComponent(window.__wsToken);
-    const _ws = new WebSocket(url);
+    _ws = new WebSocket(url);
     _ws.addEventListener('open', function () {
       try {
-        const mid = window.__matchId || null;
-        if (mid) _ws.send(JSON.stringify({ type: 'join', match_id: String(mid) }));
+        const DEFAULT_ROOM_ID = (typeof window.__defaultRoomId !== 'undefined') ? String(window.__defaultRoomId) : '0';
+        const urlParams = new URLSearchParams(location.search);
+        const mid = (window.MATCH_DATA && MATCH_DATA.match_id) ? String(MATCH_DATA.match_id) : (window.__matchId || urlParams.get('match_id') || DEFAULT_ROOM_ID);
+        _ws.send(JSON.stringify({ type: 'join', match_id: String(mid) }));
       } catch (_) {}
     });
-    _ws.addEventListener('message', function (ev) {
-      try {
-        const m = JSON.parse(ev.data);
-        if (!m) return;
-        if (m.type === 'last_state' && m.payload) {
-          try { localStorage.setItem(STORAGE_KEY, JSON.stringify(m.payload)); } catch(_) {}
-          render(m.payload);
-        } else if ((m.type === 'basketball_state' || m.type === 'state') && m.payload) {
-          render(m.payload);
-        }
-      } catch (_) {}
-    });
+    
+      _ws.addEventListener('message', function (ev) {
+        try {
+          const m = JSON.parse(ev.data);
+          if (!m) return;
+          if (m.type === 'last_state' && m.payload) {
+            try { localStorage.setItem(STORAGE_KEY, JSON.stringify(m.payload)); } catch(_) {}
+            scheduleRender(m.payload);
+          } else if (m.type === 'applied_action' && m.payload) {
+            // applied_action contains a partial payload (delta) to merge
+            scheduleRender(m.payload);
+          } else if (m.type === 'new_match') {
+            try { adoptNewMatch(m); } catch(_) {}
+          } else if (m.type === 'room_state' && m.payload) {
+            // room_state may contain multiple sports; prefer basketball payload
+            const p = m.payload.basketball_state || m.payload.basketball || m.payload['basketball_state'] || m.payload['basketball'];
+            if (p) scheduleRender(p);
+          } else if ((m.type === 'basketball_state' || m.type === 'state') && m.payload) {
+            scheduleRender(m.payload);
+          }
+        } catch (_) {}
+      });
     _ws.addEventListener('close', function () { setTimeout(initWS, 2000); });
     _ws.addEventListener('error', function () { /* ignore */ });
   } catch (_) {}
@@ -104,10 +175,22 @@ try {
 
 // ── 2. localStorage storage event (cross-tab) ────────────────
 window.addEventListener('storage', function (e) {
-  if (e.key !== STORAGE_KEY) return;
   try {
-    const s = e.newValue ? JSON.parse(e.newValue) : null;
-    if (s) scheduleRender(s);
+    if (e.key === STORAGE_KEY) {
+      const s = e.newValue ? JSON.parse(e.newValue) : null;
+      if (s) scheduleRender(s);
+      return;
+    }
+    // Special-case: adopt new match signal from admin tabs
+    if (e.key === 'basketball_new_match') {
+      if (!e.newValue) return;
+      try {
+        const info = JSON.parse(e.newValue);
+        const newId = info && (info.match_id || info.matchId) ? String(info.match_id || info.matchId) : null;
+        if (newId) adoptNewMatch({ match_id: newId });
+      } catch (_) {}
+      return;
+    }
   } catch (_) {}
 });
 
@@ -130,10 +213,17 @@ const scTenthEl = getEl('scTenth');
 const scRingEl  = getEl('scRing');
 const scBlock   = getEl('scBlock');
 
+// Row cache for incremental updates (avoid full tbody rebuilds)
+const _rowMap = { A: {}, B: {} };
+const _lastRoster = { A: null, B: null };
+
 // ── Helpers ──────────────────────────────────────────────────
 function setText(id, val) {
   const el = getEl(id);
-  if (el) el.textContent = (val == null ? '' : val);
+  if (!el) return;
+  const newStr = (val == null ? '' : String(val));
+  if (el.textContent === newStr) return;
+  el.textContent = newStr;
 }
 
 function flash(el) {
@@ -154,45 +244,93 @@ function gtFmt(secs) {
 const _prev = { scoreA: null, scoreB: null };
 
 // ── Render roster table for one team ─────────────────────────
-const _lastRoster = { A: null, B: null };
+function _createRowObj(team, p) {
+  const tr = document.createElement('tr'); tr.className = 'player-main-row'; tr.dataset.playerId = String(p.id);
+  const tdNo = document.createElement('td'); tdNo.className = 'td-no'; tdNo.textContent = p.no || '';
+  const tdNm = document.createElement('td'); tdNm.className = 'td-name'; tdNm.textContent = p.name || '—';
+  tr.appendChild(tdNo); tr.appendChild(tdNm);
+  const stats = {};
+  ['pts','foul','reb','ast','blk','stl'].forEach(function (stat) {
+    const td = document.createElement('td');
+    if (stat === 'pts') td.className = 'pts-cell';
+    const span = document.createElement('span'); span.className = 'stat-val'; span.textContent = p[stat] != null ? p[stat] : 0;
+    td.appendChild(span); tr.appendChild(td);
+    stats[stat] = span;
+  });
+  const tdTF = document.createElement('td'); const tfSpan = document.createElement('span'); tfSpan.className = 'stat-val tf-val'; tfSpan.textContent = p.techFoul || 0; tdTF.appendChild(tfSpan); tr.appendChild(tdTF);
+
+  let techTr = null;
+  if (p.techFoul > 0 || p.techReason) {
+    techTr = document.createElement('tr'); techTr.className = 'player-tech-row';
+    const techTd = document.createElement('td'); techTd.colSpan = 9;
+    const inner = document.createElement('div'); inner.className = 'tech-inner';
+    const lbl = document.createElement('span'); lbl.className = 'tech-label'; lbl.textContent = 'Tech Foul:';
+    const val = document.createElement('span'); val.className = 'tech-count-val'; val.textContent = p.techFoul || 0;
+    const reason = document.createElement('span'); reason.className = 'tech-reason-display'; reason.textContent = p.techReason || '';
+    inner.appendChild(lbl); inner.appendChild(val); inner.appendChild(reason); techTd.appendChild(inner); techTr.appendChild(techTd);
+  }
+
+  return { id: String(p.id), main: tr, tech: techTr, elems: { no: tdNo, name: tdNm, stats: stats, tf: tfSpan, techReasonEl: techTr ? techTr.querySelector('.tech-reason-display') : null, techCountEl: techTr ? techTr.querySelector('.tech-count-val') : null } };
+}
+
+function _updateRowObj(rowObj, p) {
+  if (!rowObj || !p) return;
+  const setIfChanged = (el, v) => {
+    const s = (v == null ? '' : String(v));
+    if (el && el.textContent !== s) el.textContent = s;
+  };
+  setIfChanged(rowObj.elems.no, p.no || '');
+  setIfChanged(rowObj.elems.name, p.name || '—');
+  ['pts','foul','reb','ast','blk','stl'].forEach(stat => setIfChanged(rowObj.elems.stats[stat], p[stat] != null ? p[stat] : 0));
+  setIfChanged(rowObj.elems.tf, p.techFoul || 0);
+  if (rowObj.tech) {
+    setIfChanged(rowObj.elems.techCountEl, p.techFoul || 0);
+    setIfChanged(rowObj.elems.techReasonEl, p.techReason || '');
+  }
+}
+
 function renderRoster(team, players) {
   const tbody = getEl('tbody' + team);
   if (!tbody) return;
 
-  // Skip full rebuild if players array hasn't changed (shallow JSON compare)
+  // quick equality short-circuit
   try {
     const raw = JSON.stringify(players || []);
     if (_lastRoster[team] === raw) return;
     _lastRoster[team] = raw;
-  } catch (e) { /* fallback to always render */ }
+  } catch (e) { _lastRoster[team] = null; }
 
-  // Rebuild DOM (kept simple for viewer) — avoid querying inside loops
-  tbody.innerHTML = '';
-  const fragment = document.createDocumentFragment();
+  const map = _rowMap[team] || (_rowMap[team] = {});
+  const desiredIds = [];
   (players || []).forEach(function (p) {
-    const tr = document.createElement('tr'); tr.className = 'player-main-row';
-    const tdNo = document.createElement('td'); tdNo.className = 'td-no'; tdNo.textContent = p.no || '';
-    const tdNm = document.createElement('td'); tdNm.className = 'td-name'; tdNm.textContent = p.name || '—';
-    tr.appendChild(tdNo); tr.appendChild(tdNm);
-    ['pts','foul','reb','ast','blk','stl'].forEach(function (stat) {
-      const td = document.createElement('td'); if (stat === 'pts') td.className = 'pts-cell';
-      const span = document.createElement('span'); span.className = 'stat-val'; span.textContent = p[stat] != null ? p[stat] : 0;
-      td.appendChild(span); tr.appendChild(td);
-    });
-    const tdTF = document.createElement('td'); const tfSpan = document.createElement('span'); tfSpan.className = 'stat-val tf-val'; tfSpan.textContent = p.techFoul || 0; tdTF.appendChild(tfSpan); tr.appendChild(tdTF);
-    fragment.appendChild(tr);
-
-    if (p.techFoul > 0 || p.techReason) {
-      const techTr = document.createElement('tr'); techTr.className = 'player-tech-row';
-      const techTd = document.createElement('td'); techTd.colSpan = 9;
-      const inner = document.createElement('div'); inner.className = 'tech-inner';
-      const lbl = document.createElement('span'); lbl.className = 'tech-label'; lbl.textContent = 'Tech Foul:';
-      const val = document.createElement('span'); val.className = 'tech-count-val'; val.textContent = p.techFoul || 0;
-      const reason = document.createElement('span'); reason.className = 'tech-reason-display'; reason.textContent = p.techReason || '';
-      inner.appendChild(lbl); inner.appendChild(val); inner.appendChild(reason); techTd.appendChild(inner); techTr.appendChild(techTd); fragment.appendChild(techTr);
+    const id = String(p.id);
+    desiredIds.push(id);
+    if (!map[id]) {
+      map[id] = _createRowObj(team, p);
     }
+    _updateRowObj(map[id], p);
   });
-  tbody.appendChild(fragment);
+
+  // remove rows no longer present
+  for (const existingId in Object.assign({}, map)) {
+    if (desiredIds.indexOf(existingId) === -1) {
+      const r = map[existingId];
+      if (r.main && r.main.parentNode) r.main.parentNode.removeChild(r.main);
+      if (r.tech && r.tech.parentNode) r.tech.parentNode.removeChild(r.tech);
+      delete map[existingId];
+    }
+  }
+
+  // reorder / append nodes to match incoming order without recreating elements
+  const frag = document.createDocumentFragment();
+  desiredIds.forEach(id => {
+    const r = map[id];
+    if (!r) return;
+    frag.appendChild(r.main);
+    if (r.tech) frag.appendChild(r.tech);
+  });
+  // append moves nodes rather than recreating them
+  tbody.appendChild(frag);
 }
 
 // ── Render game timer display ─────────────────────────────────
@@ -278,20 +416,26 @@ function _syncGameTimer(incoming) {
   // compute current local remaining (account for elapsed since last sync)
   const elapsed = _localGT.lastSync ? (now - _localGT.lastSync) / 1000 : 0;
   const currentLocalRem = Math.max(0, _localGT.lastKnownRemaining - elapsed);
-  // If incoming appears slightly ahead (greater) than local while running,
-  // only ignore small increases when the incoming also reports `running`.
-  // This ensures a pause (incoming.running === false) is always accepted
-  // immediately and will stop local loops.
+  // Interpret explicit running only when provided; otherwise treat as no-op
+  const incomingRunning = (typeof incoming.running === 'boolean') ? incoming.running : (typeof incoming.is_running === 'boolean' ? incoming.is_running : null);
   const increase = incomingRem - currentLocalRem;
-  if (_localGT.running && incoming.running && increase > 0 && increase <= 1.0) {
-    // treat as out-of-order / network jitter — ignore
+  if (_localGT.running && incomingRunning === true && increase > 0 && increase <= 1.0) {
+    // small out-of-order jitter while both report running — ignore
   } else {
-    // accept incoming state (either decrease or large increase/reset, or paused)
+    // accept incoming numeric values
     _localGT.lastKnownRemaining = incomingRem;
-    _localGT.running = !!incoming.running;
+    if (incomingRunning !== null) _localGT.running = incomingRunning;
     _localGT.lastSync = now;
   }
-  if (_localGT.running) _startLocalGT(); else { _stopLocalGT(); renderGameTimer({ remaining: _localGT.lastKnownRemaining, running: false }); }
+  // Start/stop loops only when server explicitly provides running flag.
+  if (incomingRunning === true) {
+    _startLocalGT();
+  } else if (incomingRunning === false) {
+    _stopLocalGT(); renderGameTimer({ remaining: _localGT.lastKnownRemaining, running: false });
+  } else {
+    // incomingRunning === null — server omitted running flag. Preserve existing loop state.
+    if (_localGT.running) _startLocalGT(); else { _stopLocalGT(); renderGameTimer({ remaining: _localGT.lastKnownRemaining, running: false }); }
+  }
 }
 
 function _startLocalSC() {
@@ -322,17 +466,18 @@ function _syncShotClock(incoming) {
   const incomingRem = (typeof incoming.remaining === 'number') ? incoming.remaining : _localSC.lastKnownRemaining;
   const elapsed = _localSC.lastSync ? (now - _localSC.lastSync) / 1000 : 0;
   const currentLocalRem = Math.max(0, _localSC.lastKnownRemaining - elapsed);
+  const incomingRunning = (typeof incoming.running === 'boolean') ? incoming.running : (typeof incoming.is_running === 'boolean' ? incoming.is_running : null);
   const increase = incomingRem - currentLocalRem;
   // Allow increases when clock was reset (total changed) or clock is stopped (not running).
   // Only ignore small upward jitter when both local and incoming report running.
-  if (_localSC.running && incoming.running && increase > 0 && increase <= 0.9 && incoming.total === prevTotal) {
+  if (_localSC.running && incomingRunning === true && increase > 0 && increase <= 0.9 && incoming.total === prevTotal) {
     // small jitter — ignore
   } else {
     _localSC.lastKnownRemaining = incomingRem;
-    _localSC.running = !!incoming.running;
+    if (incomingRunning !== null) _localSC.running = incomingRunning;
     _localSC.lastSync = now;
   }
-  if (_localSC.running) _startLocalSC(); else { _stopLocalSC(); renderShotClock({ remaining: _localSC.lastKnownRemaining, total: _localSC.total, running: false }); }
+  if (incomingRunning === true) _startLocalSC(); else if (incomingRunning === false) { _stopLocalSC(); renderShotClock({ remaining: _localSC.lastKnownRemaining, total: _localSC.total, running: false }); } else { if (_localSC.running) _startLocalSC(); else { _stopLocalSC(); renderShotClock({ remaining: _localSC.lastKnownRemaining, total: _localSC.total, running: false }); } }
 }
 
 // ── Main render ──────────────────────────────────────────────
@@ -387,10 +532,10 @@ function render(s) {
   const sh = s.shared || {};
   setText('foulVal',    sh.foul    != null ? sh.foul    : 0);
   setText('timeoutVal', sh.timeout != null ? sh.timeout : 0);
-  setText('quarterVal', sh.quarter != null ? sh.quarter : 0);
+  setText('bbQuarterVal', sh.quarter != null ? sh.quarter : 0);
 
   // Committee
-  setText('committeeValue', (s.committee || '').trim() || '—');
+  setText('bbCommitteeValue', (s.committee || '').trim() || '—');
 
   // Rosters — only rebuild if data changed
   renderRoster('A', tA.players || []);

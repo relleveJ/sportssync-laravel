@@ -1,5 +1,5 @@
-// ============================================================
-// badminton_viewer.js — Read-only live score viewer
+﻿// ============================================================
+// badminton_viewer.js â€” Read-only live score viewer
 //
 // HOW IT STAYS LIVE (no page refresh needed):
 //   badminton_admin.js already calls saveLocalState() after
@@ -8,12 +8,12 @@
 //   channels so updates arrive instantly:
 //
 //   1. BroadcastChannel('badminton_live')
-//      → instant push to other tabs in the SAME browser
+//      â†’ instant push to other tabs in the SAME browser
 //        (requires the one-line patch at the bottom of
-//         badminton_admin.js — see PATCH block below)
+//         badminton_admin.js â€” see PATCH block below)
 //
 //   2. window 'storage' event
-//      → fires in every OTHER tab whenever localStorage
+//      â†’ fires in every OTHER tab whenever localStorage
 //        changes; no admin-side patch required for this one
 //
 //   Either channel alone is enough for same-device use.
@@ -23,14 +23,75 @@
 const STORAGE_KEY  = 'badmintonMatchState';
 const CHANNEL_NAME = 'badminton_live';
 
-// ── 1. BroadcastChannel listener (instant, same browser) ────
+// Track previous sets length to detect new sets
+let _prevSetsLength = 0;
+
+// Track previous winner team to detect match winner
+let _prevWinnerTeam = null;
+
+// â”€â”€ Apply a remote reset on the viewer: clear state and reload â”€â”€
+function _buildViewerResetState(payload) {
+  payload = payload || {};
+  return {
+    _resetApplied: true,
+    match_id: payload.match_id || null,
+    sets: [],
+    swapped: false,
+    teamAName: 'TEAM A',
+    teamBName: 'TEAM B',
+    scoreA: 0,
+    scoreB: 0,
+    gamesA: 0,
+    gamesB: 0,
+    bestOf: 3,
+    currentSet: 1,
+    timeoutA: 0,
+    timeoutB: 0,
+    servingTeam: 'A',
+    committee: '',
+    matchType: 'singles',
+    teamAPlayer1: '',
+    teamAPlayer2: '',
+    teamBPlayer1: '',
+    teamBPlayer2: '',
+    manualWinners: {}
+  };
+}
+
+function _applyViewerReset(payload) {
+  try { localStorage.removeItem(STORAGE_KEY); } catch (_) {}
+  try { sessionStorage.removeItem('badminton_match_id'); } catch (_) {}
+  render(_buildViewerResetState(payload));
+}
+
+function _resetIfLocalStateWasActive() {
+  try {
+    if (localStorage.getItem(STORAGE_KEY)) _applyViewerReset();
+  } catch (_) {}
+}
+
+// â”€â”€ 1. BroadcastChannel listener (instant, same browser) â”€â”€â”€â”€
 let _bc = null;
 try {
   _bc = new BroadcastChannel(CHANNEL_NAME);
   _bc.onmessage = function (e) {
-    if (e.data && typeof e.data === 'object') render(e.data);
+    if (!e.data || typeof e.data !== 'object') return;
+    // Reset signal from another tab
+    if (e.data._reset === true) { _applyViewerReset(e.data); return; }
+    // âœ… SSOT NEW MATCH â€” fresh match broadcast via BroadcastChannel (same browser)
+    // When admin creates a new match on the same device, the BroadcastChannel
+    // delivers the fresh state here. Wipe localStorage and render immediately.
+    if (e.data.match_id && e.data._newMatch === true) {
+      try { localStorage.removeItem(STORAGE_KEY); } catch (_) {}
+      try { sessionStorage.setItem('badminton_match_id', String(e.data.match_id)); } catch (_) {}
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(Object.assign({}, e.data, { _savedAt: new Date().toISOString() }))); } catch (_) {}
+      render(e.data);
+      return;
+    }
+    // âœ… SSOT NEW MATCH â€” end
+    render(e.data);
   };
-} catch (_) { /* BroadcastChannel not supported — storage event covers it */ }
+} catch (_) { /* BroadcastChannel not supported â€” storage event covers it */ }
 
 // WebSocket relay: receive broadcasts from admin via ws-server
 (function initWS() {
@@ -47,6 +108,28 @@ try {
       try {
         const m = JSON.parse(ev.data);
         if (m) {
+          // â”€â”€ Remote reset broadcast â”€â”€
+          if (m.type === 'new_match' && m.payload && m.payload._reset === true) {
+            _applyViewerReset(m.payload);
+            return;
+          }
+          // âœ… SSOT NEW MATCH â€” handle fresh match broadcast from admin
+          // When admin creates a new match, a new_match message arrives with
+          // a full freshViewerState payload (has match_id but no _reset flag).
+          // Apply it immediately so viewers see the new blank slate in real-time.
+          if (m.type === 'new_match' && m.payload && m.payload.match_id && !m.payload._reset) {
+            try {
+              const freshState = m.payload;
+              // Wipe stale localStorage so no previous match data bleeds in
+              try { localStorage.removeItem(STORAGE_KEY); } catch (_) {}
+              try { sessionStorage.setItem('badminton_match_id', String(freshState.match_id)); } catch (_) {}
+              // Cache and render the fresh state
+              try { localStorage.setItem(STORAGE_KEY, JSON.stringify(Object.assign({}, freshState, { _savedAt: new Date().toISOString() }))); } catch (_) {}
+              render(freshState);
+            } catch (_) {}
+            return;
+          }
+          // âœ… SSOT NEW MATCH â€” end
           if (m.type === 'last_state' && m.payload) {
             try { localStorage.setItem(STORAGE_KEY, JSON.stringify(m.payload)); } catch(_) {}
             render(m.payload);
@@ -61,18 +144,18 @@ try {
   } catch (_) {}
 })();
 
-// ── Periodic DB poll — cross-device fallback ──────────────────────
-// Polls state.php every 3 seconds ONLY when the WS is disconnected.
+// â”€â”€ Periodic DB poll â€” cross-device fallback â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Polls state.php frequently ONLY when the WS is disconnected.
 // This guarantees cross-device viewers stay live even without a WS server.
 // When WS is connected this does nothing (WS push is faster and free).
 let _wsLive = false;
 let _pollTimer = null;
-const POLL_INTERVAL_MS = 3000;
+const POLL_INTERVAL_MS = 500;
 
 function _startPoll() {
   if (_pollTimer) return;
   _pollTimer = setInterval(function() {
-    if (_wsLive) return; // WS is delivering updates — no need to poll
+    if (_wsLive) return; // WS is delivering updates â€” no need to poll
     try {
       let url = 'state.php?latest=1';
       if (window.MATCH_DATA && MATCH_DATA.match_id) {
@@ -87,6 +170,8 @@ function _startPoll() {
             render(j.state);
             // Keep localStorage in sync for BroadcastChannel consumers
             try { localStorage.setItem(STORAGE_KEY, JSON.stringify(j.state)); } catch(_) {}
+          } else if (j && !j.success) {
+            _resetIfLocalStateWasActive();
           }
         })
         .catch(function() {});
@@ -96,13 +181,16 @@ function _startPoll() {
 _startPoll();
 window.addEventListener('storage', function (e) {
   if (e.key !== STORAGE_KEY) return;
+  // Key removed = reset was broadcast via localStorage.removeItem()
+  if (e.newValue === null) { _applyViewerReset(); return; }
   try {
-    const state = e.newValue ? JSON.parse(e.newValue) : null;
+    const state = JSON.parse(e.newValue);
+    if (state && state._reset === true) { _applyViewerReset(state); return; }
     if (state) render(state);
   } catch (_) {}
 });
 
-// ── Helpers ──────────────────────────────────────────────────
+// â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function setText(id, val) {
   const el = document.getElementById(id);
@@ -118,7 +206,7 @@ function flashEl(id) {
   setTimeout(function () { el.classList.remove('flash'); }, 500);
 }
 
-// ── Match type tab highlight ─────────────────────────────────
+// â”€â”€ Match type tab highlight â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function setMatchTypeDisplay(type) {
   const map = { singles: 'mtSingles', doubles: 'mtDoubles', mixed: 'mtMixed' };
@@ -128,7 +216,7 @@ function setMatchTypeDisplay(type) {
   });
 }
 
-// ── Player rows ──────────────────────────────────────────────
+// â”€â”€ Player rows â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function buildPlayerRows(containerId, players) {
   const container = document.getElementById(containerId);
@@ -167,10 +255,10 @@ function buildPlayerList(state, team) {
   return list.filter(function (p) { return p.name.trim() !== ''; });
 }
 
-// ── Previous score cache (for flash detection) ───────────────
+// â”€â”€ Previous score cache (for flash detection) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const _prev = { scoreA: null, scoreB: null };
 
-// ── Main render ──────────────────────────────────────────────
+// â”€â”€ Main render â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function render(state) {
   if (!state) { setMatchTypeDisplay('singles'); return; }
@@ -181,7 +269,7 @@ function render(state) {
   setText('teamAName', teamAName);
   setText('teamBName', teamBName);
 
-  // Scores — flash when they change
+  // Scores â€” flash when they change
   const newScoreA = state.scoreA != null ? state.scoreA : 0;
   const newScoreB = state.scoreB != null ? state.scoreB : 0;
   if (_prev.scoreA !== null && newScoreA !== _prev.scoreA) flashEl('scoreA');
@@ -209,7 +297,7 @@ function render(state) {
   setText('timeoutLabelB', teamBName);
 
   // Committee
-  setText('committeeDisplay', (state.committee || '').trim() || '—');
+  setText('committeeDisplay', (state.committee || '').trim() || 'â€”');
 
   // Match type tabs
   const typeRaw = (state.matchType || 'singles').toLowerCase();
@@ -218,11 +306,28 @@ function render(state) {
                 : 'singles';
   setMatchTypeDisplay(typeKey);
 
-  // Players
-  buildPlayerRows('playersA', buildPlayerList(state, 'A'));
-  buildPlayerRows('playersB', buildPlayerList(state, 'B'));
+  // Check for new set winner
+  if (state.sets && state.sets.length > _prevSetsLength) {
+    const newSet = state.sets[state.sets.length - 1];
+    if (newSet && newSet.winner) {
+      const winnerName = newSet.winner === 'A' ? teamAName : teamBName;
+      showWinnerModal('ðŸ† SET WINNER', `${winnerName} wins Set ${newSet.setNumber}!`);
+    }
+  }
+  _prevSetsLength = state.sets ? state.sets.length : 0;
 
-  // Swap sides — mirror what the admin does to its grid
+  // Check for match winner
+  if (state.winner_team && state.winner_team !== _prevWinnerTeam) {
+    const winnerName = state.winner_team === 'A' ? teamAName : teamBName;
+    showWinnerModal('ðŸ† MATCH WINNER', `${winnerName} wins the match!`);
+    _prevWinnerTeam = state.winner_team;
+  }
+
+  // Players
+  buildPlayerRows('bd-playersA', buildPlayerList(state, 'A'));
+  buildPlayerRows('bd-playersB', buildPlayerList(state, 'B'));
+
+  // Swap sides â€” mirror what the admin does to its grid
   const area  = document.getElementById('mainArea');
   const toRow = document.getElementById('timeoutRow');
   if (state.swapped) {
@@ -237,8 +342,8 @@ function render(state) {
   setText('statusMatchType',  state.matchType  || 'Singles');
   setText('statusBestOf',     state.bestOf     != null ? state.bestOf     : 3);
   setText('statusCurrentSet', state.currentSet != null ? state.currentSet : 1);
-  setText('statusScore',      newScoreA + ' — ' + newScoreB);
-  setText('statusGames',      (state.gamesA || 0) + ' — ' + (state.gamesB || 0));
+  setText('statusScore',      newScoreA + ' â€” ' + newScoreB);
+  setText('statusGames',      (state.gamesA || 0) + ' â€” ' + (state.gamesB || 0));
   setText('statusServing',    servingName);
 
   // Previous completed set (show last entry from state.sets if present)
@@ -246,20 +351,20 @@ function render(state) {
     const sets = Array.isArray(state.sets) ? state.sets : [];
     if (sets.length > 0) {
       const last = sets[sets.length - 1];
-      const a = (last.teamAScore != null) ? last.teamAScore : (last.teamAScore === 0 ? 0 : '—');
-      const b = (last.teamBScore != null) ? last.teamBScore : (last.teamBScore === 0 ? 0 : '—');
-      setText('statusPrevSet', 'Set ' + (last.setNumber || sets.length) + ': ' + a + ' — ' + b);
+      const a = (last.teamAScore != null) ? last.teamAScore : (last.teamAScore === 0 ? 0 : 'â€”');
+      const b = (last.teamBScore != null) ? last.teamBScore : (last.teamBScore === 0 ? 0 : 'â€”');
+      setText('statusPrevSet', 'Set ' + (last.setNumber || sets.length) + ': ' + a + ' â€” ' + b);
     } else {
-      setText('statusPrevSet', '—');
+      setText('statusPrevSet', 'â€”');
     }
   } catch (e) {
-    setText('statusPrevSet', '—');
+    setText('statusPrevSet', 'â€”');
   }
 
   // Prev-winner: determine by numeric comparison of the last completed set's scores
   try {
     const sets = Array.isArray(state.sets) ? state.sets : [];
-    let prevWinnerLabel = '—';
+    let prevWinnerLabel = 'â€”';
     if (sets.length > 0) {
       const last = sets[sets.length - 1];
       const aScore = Number(last.teamAScore);
@@ -278,7 +383,7 @@ function render(state) {
       }
     }
     setText('statusPrevWinner', prevWinnerLabel);
-  } catch (e) { setText('statusPrevWinner', '—'); }
+  } catch (e) { setText('statusPrevWinner', 'â€”'); }
 
   // Highlight manual winners persisted from admin: prefer current set mapping
   // so admin toggles appear immediately in the viewer; otherwise fall back
@@ -304,10 +409,10 @@ function render(state) {
 
     if (winner === 'A') {
       const hdr = document.querySelector('#panelA .team-header'); if (hdr) hdr.classList.add('manual-winner');
-      const vBtnA = document.getElementById('markWinnerA'); if (vBtnA) vBtnA.classList.add('active');
+      const vBtnA = document.getElementById('markWinnerA'); if (vBtnA) { vBtnA.classList.add('active'); flashEl('markWinnerA'); }
     } else if (winner === 'B') {
       const hdr = document.querySelector('#panelB .team-header'); if (hdr) hdr.classList.add('manual-winner');
-      const vBtnB = document.getElementById('markWinnerB'); if (vBtnB) vBtnB.classList.add('active');
+      const vBtnB = document.getElementById('markWinnerB'); if (vBtnB) { vBtnB.classList.add('active'); flashEl('markWinnerB'); }
     }
   } catch (e) { /* ignore */ }
   // previous winner already handled above (prefers manual mapping)
@@ -327,27 +432,18 @@ function render(state) {
       hdr.classList.add('manual-winner');
     }
 
-    const btnA = document.getElementById('markWinnerA');
-    const btnB = document.getElementById('markWinnerB');
-    if (btnA && !btnA.dataset._bind) {
-      btnA.addEventListener('click', function() {
-        setManualWinner('A');
-        // reflect label in footer
-        setText('statusPrevWinner', teamAName);
-      });
-      btnA.dataset._bind = '1';
-    }
-    if (btnB && !btnB.dataset._bind) {
-      btnB.addEventListener('click', function() {
-        setManualWinner('B');
-        setText('statusPrevWinner', teamBName);
-      });
-      btnB.dataset._bind = '1';
-    }
+    // âœ… SSOT FIX START â€” Patch 5
+    // Viewer winner buttons are READ-ONLY display indicators that mirror the
+    // admin's manualWinners state (already applied above via the manual[] mapping).
+    // We intentionally do NOT attach click handlers that mutate local DOM here â€”
+    // those mutations were overwritten on every render() call and never synced
+    // back to the SSOT, causing phantom highlights that disappeared immediately.
+    // The trophy buttons remain visible so spectators can see who the admin marked.
+    // âœ… SSOT FIX END
   } catch (e) { /* ignore manual-winner setup errors */ }
 }
 
-// ── Initial load — priority order: ───────────────────────────
+// â”€â”€ Initial load â€” priority order: â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 //   1. localStorage (instant, same device)
 //   2. DB via state.php (cross-device fallback when localStorage is empty)
 //
@@ -370,12 +466,12 @@ function render(state) {
     }
   } catch (_) {}
 
-  // Step 2: localStorage was empty — fetch from DB
+  // Step 2: localStorage was empty â€” fetch from DB
   setMatchTypeDisplay('singles');
   _loadStateFromDB();
 })();
 
-// ── Fetch latest live state from state.php (DB-backed) ───────────
+// â”€â”€ Fetch latest live state from state.php (DB-backed) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function _loadStateFromDB() {
   try {
     // If a match_id is embedded in the page (PHP can echo it), use it
@@ -391,27 +487,62 @@ function _loadStateFromDB() {
       .then(function(r) { return r.ok ? r.json() : null; })
       .then(function(j) {
         if (j && j.success && j.state && typeof j.state === 'object') {
-          // Only apply if the DB state is newer than what localStorage has
-          try {
+          // âœ… SSOT FIX START â€” Patch 6
+          // DB (state.php) is the SSOT. Always apply and cache its state when:
+          //   a) it is not a reset signal, AND
+          //   b) it carries a real match_id (was written by an admin, not a default).
+          // Previously we skipped applying DB state when localStorage was non-empty,
+          // which left viewers permanently stuck on stale local data after a page reload.
+          if (!j.state._reset) {
+            // Skip payloads that originated from this same tab (no-op anti-flicker)
             const localRaw = localStorage.getItem(STORAGE_KEY);
+            let shouldApply = true;
             if (localRaw) {
-              // We have local state — only override if DB has a match_id
-              // (meaning it was written by an admin, not a stale default)
-              if (!j.state._reset) {
-                // Update localStorage so same-device viewers also benefit
-                localStorage.setItem(STORAGE_KEY, JSON.stringify(j.state));
-              }
-            } else {
-              if (!j.state._reset) {
-                localStorage.setItem(STORAGE_KEY, JSON.stringify(j.state));
-                render(j.state);
-              }
+              try {
+                const localParsed = JSON.parse(localRaw);
+                // If local and DB match_id are the same AND local is â‰¥ DB, skip to avoid flicker
+                if (localParsed && localParsed.match_id && j.state.match_id &&
+                    String(localParsed.match_id) === String(j.state.match_id) &&
+                    j.updated_at && localParsed._savedAt && localParsed._savedAt >= j.updated_at) {
+                  shouldApply = false;
+                }
+              } catch (_) {}
             }
-          } catch (_) {
-            if (!j.state._reset) render(j.state);
+            if (shouldApply) {
+              try { localStorage.setItem(STORAGE_KEY, JSON.stringify(j.state)); } catch (_) {}
+              render(j.state);
+            }
           }
+          // ✅ SSOT FIX END
+        } else if (j && !j.success) {
+          _resetIfLocalStateWasActive();
         }
       })
       .catch(function() { /* state.php unreachable — localStorage or WS covers it */ });
   } catch (_) {}
+}
+
+(function init() {
+  // Step 1: try localStorage first (instant, no network needed)
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') {
+        render(parsed);
+      }
+    }
+  } catch (_) {}
+
+  // Step 2: also fetch the latest from DB; may override if fresher
+  _loadStateFromDB();
+})();
+function showWinnerModal(title, msg) {
+  document.getElementById('winnerModalTitle').textContent = title;
+  document.getElementById('winnerModalMsg').textContent = msg;
+  document.getElementById('winnerModal').style.display = 'flex';
+}
+
+function closeWinnerModal() {
+  document.getElementById('winnerModal').style.display = 'none';
 }

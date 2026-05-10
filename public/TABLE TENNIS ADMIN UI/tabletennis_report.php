@@ -34,6 +34,65 @@ $stmt->execute();
 $sets = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 $stmt->close();
 
+// Normalize sets: assign missing set numbers sequentially, dedupe by set_number (keep last), ensure integer fields
+if (!empty($sets) && is_array($sets)) {
+  $maxNum = 0;
+  foreach ($sets as $s) {
+    $n = isset($s['set_number']) ? (int)$s['set_number'] : 0;
+    if ($n > $maxNum) $maxNum = $n;
+  }
+  $auto = $maxNum;
+  $byNum = [];
+  foreach ($sets as $s) {
+    $sn = isset($s['set_number']) ? (int)$s['set_number'] : 0;
+    if ($sn <= 0) { $auto++; $sn = $auto; }
+    $s['set_number'] = $sn;
+    $s['team_a_score'] = isset($s['team_a_score']) ? (int)$s['team_a_score'] : 0;
+    $s['team_b_score'] = isset($s['team_b_score']) ? (int)$s['team_b_score'] : 0;
+    $s['team_a_timeout_used'] = !empty($s['team_a_timeout_used']) ? 1 : 0;
+    $s['team_b_timeout_used'] = !empty($s['team_b_timeout_used']) ? 1 : 0;
+    $s['serving_team'] = ($s['serving_team'] ?? 'A') === 'B' ? 'B' : 'A';
+    $s['set_winner'] = in_array($s['set_winner'] ?? null, ['A','B']) ? $s['set_winner'] : null;
+    // keep last occurrence for a given set_number
+    $byNum[$sn] = $s;
+  }
+  ksort($byNum, SORT_NUMERIC);
+  $sets = array_values($byNum);
+  $logPath = defined('LARAVEL_WRAPPER') ? storage_path('logs/legacy/tabletennis_debug.log') : __DIR__ . '/tabletennis_debug.log';
+  @file_put_contents($logPath, date('[Y-m-d H:i:s] ') . "normalized sets for match {$matchId}: " . print_r($sets, true) . "\n", FILE_APPEND);
+}
+
+// Ensure contiguous list of sets up to best_of (fill missing with placeholders)
+$bestOf = isset($match['best_of']) ? (int)$match['best_of'] : 3;
+$indexed = [];
+if (!empty($sets) && is_array($sets)) {
+  foreach ($sets as $s) {
+    $indexed[(int)$s['set_number']] = $s;
+  }
+}
+$observedMax = 0;
+if (!empty($indexed)) $observedMax = max(array_keys($indexed));
+$expectedMax = max(1, $bestOf, $observedMax);
+$complete = [];
+for ($i = 1; $i <= $expectedMax; $i++) {
+  if (isset($indexed[$i])) {
+    $complete[] = $indexed[$i];
+  } else {
+    $complete[] = [
+      'set_number' => $i,
+      'team_a_score' => 0,
+      'team_b_score' => 0,
+      'team_a_timeout_used' => 0,
+      'team_b_timeout_used' => 0,
+      'serving_team' => 'A',
+      'set_winner' => null
+    ];
+  }
+}
+$sets = $complete;
+$logPath = defined('LARAVEL_WRAPPER') ? storage_path('logs/legacy/tabletennis_debug.log') : __DIR__ . '/tabletennis_debug.log';
+@file_put_contents($logPath, date('[Y-m-d H:i:s] ') . "expanded sets for match {$matchId} up to best_of={$bestOf}: " . print_r($sets, true) . "\n", FILE_APPEND);
+
 // Summary (if declared)
 $stmt = $mysqli->prepare('SELECT * FROM table_tennis_match_summary WHERE match_id = ? LIMIT 1');
 $stmt->bind_param('i', $matchId);
@@ -67,7 +126,7 @@ if ($summary && !empty($summary['winner_name'])) {
 function h(string $s): string { return htmlspecialchars($s, ENT_QUOTES, 'UTF-8'); }
 
 $exportedAt = date('F j, Y  •  g:i A', strtotime($match['created_at']));
-$committee  = h($match['committee_official'] ?? '');
+$committee  = h($_GET['committee'] ?? $match['committee_official'] ?? '');
 $teamAName  = h($match['team_a_name']);
 $teamBName  = h($match['team_b_name']);
 $matchType  = h($match['match_type']);
@@ -144,10 +203,10 @@ $jsonMatch = json_encode([
   /* REPORRRRRRRRRRRRRRRRRRRRRRRRRRRRRRT PAGE/ REPORT PAGE DESIGN */
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: Arial, sans-serif; background: #090505; color: #111; min-height: 100vh; padding-bottom: 60px; }
-  .export-bar { background: #062a78; border-bottom: 3px solid #FFE600; padding: 10px 24px; display: flex; align-items: center; gap: 10px; justify-content: flex-end; position: sticky; top: 0; z-index: 50; }
-  .export-bar .bar-title { font-family: 'Oswald', sans-serif; font-size: 13px; letter-spacing: 1.5px; color: #FFE600; text-transform: uppercase; margin-right: auto; font-weight: 700; }
+  .export-bar { background: #b71c1c; border-bottom: 3px solid #FFCDD2; padding: 10px 24px; display: flex; align-items: center; gap: 10px; justify-content: flex-end; position: sticky; top: 0; z-index: 50; }
+  .export-bar .bar-title { font-family: 'Oswald', sans-serif; font-size: 13px; letter-spacing: 1.5px; color: #FFFFFF; text-transform: uppercase; margin-right: auto; font-weight: 700; }
   .btn-export { border: none; cursor: pointer; font-family: 'Oswald', sans-serif; font-size: 12px; font-weight: 700; letter-spacing: 1px; padding: 8px 18px; border-radius: 4px; text-transform: uppercase; transition: filter 0.15s, transform 0.1s; }
-  .btn-excel { background: #1e6c35; color: #fff; }
+  .btn-excel { background: #b71c1c; color: #fff; }
   .btn-print { background: #FFE600; color: #111; }
   .container { max-width: 960px; margin: 0 auto; background: #d7deff; padding: 24px 22px; border-radius: 8px; box-shadow: 0 6px 18px rgba(0,0,0,0.08); margin-top: 24px; margin-bottom: 24px; }
   .report-header-title { margin: 0; color: #062a78; font-family: 'Oswald', sans-serif; font-size: 30px; letter-spacing: 2px; font-weight: 700; }
@@ -189,10 +248,15 @@ $jsonMatch = json_encode([
 <body>
 
 <!-- EXPORT TOOLBAR -->
-<div class="export-bar">
+<div class="export-bar" style="background:#b71c1c;border-bottom:3px solid #FFCDD2;padding:10px 24px;display:flex;align-items:center;gap:10px;">
+  <a class="btn-export" href="/" style="background:transparent;color:#FFFFFF;border:0;font-family:'Oswald',sans-serif;font-weight:700;letter-spacing:1px;text-decoration:none;margin-right:8px">&#8592; Back to Dashboard</a>
+  <button class="btn-export" style="background:transparent;color:#FFFFFF;border:0;font-family:'Oswald',sans-serif;font-weight:700;letter-spacing:1px;cursor:pointer;margin-right:6px" onclick="window.open('tabletennis_matches_admin.php','_blank')">📚 Match History</button>
+  <button class="btn-export" style="background:transparent;color:#FFE600;border:0;font-family:'Oswald',sans-serif;font-weight:700;letter-spacing:1px;text-decoration:none;margin-left:6px;cursor:pointer" onclick="newMatch()">➕ New Match</button>
   <span class="bar-title">🏓 Table Tennis Report — Match #<?= $matchId ?></span>
-  <button class="btn-export btn-excel" onclick="exportExcel()">⬇ Export Excel</button>
-  <button class="btn-export btn-print" onclick="window.print()">🖨 Print PDF</button>
+  <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+    <button class="btn-export btn-excel" onclick="exportExcel()">⬇ Export Excel</button>
+    <button class="btn-export btn-print" onclick="window.print()">🖨 Print PDF</button>
+  </div>
 </div>
 
 <div class="container">
@@ -303,6 +367,15 @@ $jsonMatch = json_encode([
   <div class="report-footer">Generated by SportSync &nbsp;·&nbsp; <?= $exportedAt ?></div>
 
 </div>
+
+<script>
+function newMatch(){
+  try { localStorage.removeItem('tabletennisMatchState'); } catch(e){}
+  try { localStorage.removeItem('tabletennisAdminState'); } catch(e){}
+  try { sessionStorage.removeItem('tabletennis_match_id'); } catch(e){}
+  window.location.href = 'tabletennis_admin.php';
+}
+</script>
 
 <!-- SheetJS CDN (style-capable) -->
 <script src="https://unpkg.com/xlsx-style@0.8.13/dist/xlsx.full.min.js"></script>

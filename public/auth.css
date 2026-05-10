@@ -274,3 +274,16 @@ body {
     border-radius: 12px;
   }
 }
+
+/* Forgot password link */
+.auth-forgot {
+  color: var(--yellow);
+  font-weight: 600;
+  text-decoration: none;
+  font-size: 0.92rem;
+  transition: opacity 0.15s;
+}
+.auth-forgot:hover {
+  opacity: 0.85;
+  text-decoration: underline;
+}

@@ -12,6 +12,8 @@
 // ================================================================
 
 require_once 'db_config.php';
+// Auth helpers: only required for POST operations
+require_once __DIR__ . '/../auth.php';
 header('Content-Type: application/json; charset=utf-8');
 
 // ── Ensure the state table exists (auto-create once) ────────────
@@ -72,6 +74,16 @@ if ($method === 'POST') {
         exit;
     }
 
+    // Only authenticated admins may publish live state (legacy 'scorekeeper' is mapped to 'admin')
+    $poster = null;
+    try { $poster = currentUser(); } catch (Throwable $_) { $poster = null; }
+        $allowed = ['admin', 'scorekeeper', 'superadmin'];
+    if (!$poster || !in_array($poster['role'] ?? '', $allowed, true)) {
+        http_response_code(403);
+        echo json_encode(['success' => false, 'message' => 'Authentication required']);
+        exit;
+    }
+
     // Use match_id if present, otherwise use 'live' as sentinel key
     $match_id = isset($data['match_id']) && $data['match_id'] !== '' && $data['match_id'] !== null
         ? (string)$data['match_id']
@@ -93,6 +105,24 @@ if ($method === 'POST') {
         exit;
     }
     $stmt->close();
+    // Best-effort: notify WS relay so connected clients receive this update immediately
+    try {
+        $wsRelay = getenv('WS_RELAY_URL') ?: 'http://127.0.0.1:3000/emit';
+        $wsToken = getenv('WS_TOKEN') ?: null;
+        $emitObj = ['type' => 'badminton_state', 'match_id' => $match_id, 'payload' => $data, 'sport' => 'badminton'];
+        $payload = json_encode($emitObj);
+        $ch = curl_init($wsRelay);
+        $headers = ['Content-Type: application/json'];
+        if ($wsToken) $headers[] = 'X-WS-Token: ' . $wsToken;
+        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT_MS, 200);
+        curl_setopt($ch, CURLOPT_TIMEOUT_MS, 500);
+        @curl_exec($ch);
+        @curl_close($ch);
+    } catch (Throwable $_) { /* non-fatal */ }
 
     echo json_encode(['success' => true, 'match_id' => $match_id]);
     exit;

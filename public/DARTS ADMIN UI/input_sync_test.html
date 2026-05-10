@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Darts Input Sync Test</title>
+    <style>
+        body { font-family: Arial; margin: 20px; background: #f5f5f5; }
+        .container { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; max-width: 1200px; margin: 0 auto; }
+        .admin-panel { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .admin-panel h2 { margin-top: 0; border-bottom: 2px solid #007bff; padding-bottom: 10px; }
+        .input-display { font-size: 32px; font-weight: bold; background: #e9ecef; padding: 15px; border-radius: 4px; margin: 15px 0; text-align: center; min-height: 50px; display: flex; align-items: center; justify-content: center; }
+        .numpad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 15px 0; }
+        button { background: #007bff; color: white; padding: 12px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; }
+        button:hover { background: #0056b3; }
+        .clear-btn { background: #dc3545; }
+        .clear-btn:hover { background: #c82333; }
+        .log { background: #f8f9fa; border: 1px solid #dee2e6; padding: 10px; margin: 15px 0; border-radius: 4px; max-height: 300px; overflow-y: auto; font-family: monospace; font-size: 12px; }
+        .log-entry { margin: 5px 0; line-height: 1.4; }
+        .error { color: #dc3545; }
+        .success { color: #28a745; }
+        .info { color: #17a2b8; }
+        .warning { color: #ffc107; }
+        .status { padding: 10px; margin: 10px 0; border-radius: 4px; text-align: center; font-weight: bold; }
+        .connected { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .disconnected { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+    </style>
+</head>
+<body>
+<h1>Darts Input Panel Sync Test</h1>
+<p><strong>Instructions:</strong> Open this page in 2-3 different browser tabs/windows. Each tab simulates an admin client. Type digits in one tab and watch them appear instantly in all other tabs.</p>
+
+<div class="container">
+    <div class="admin-panel">
+        <h2>Admin 1</h2>
+        <div id="admin1_status" class="status disconnected">Disconnected</div>
+        <div class="input-display" id="admin1_display">0</div>
+        <div class="numpad">
+            <button onclick="addDigit(1, 'admin1')">1</button>
+            <button onclick="addDigit(2, 'admin1')">2</button>
+            <button onclick="addDigit(3, 'admin1')">3</button>
+            <button onclick="addDigit(4, 'admin1')">4</button>
+            <button onclick="addDigit(5, 'admin1')">5</button>
+            <button onclick="addDigit(6, 'admin1')">6</button>
+            <button onclick="addDigit(7, 'admin1')">7</button>
+            <button onclick="addDigit(8, 'admin1')">8</button>
+            <button onclick="addDigit(9, 'admin1')">9</button>
+            <button onclick="addDigit(0, 'admin1')">0</button>
+            <button class="clear-btn" onclick="clearInput('admin1')">Clear</button>
+            <button onclick="enterThrow('admin1')">Enter</button>
+        </div>
+        <div class="log" id="admin1_log"></div>
+    </div>
+
+    <div class="admin-panel">
+        <h2>Admin 2</h2>
+        <div id="admin2_status" class="status disconnected">Disconnected</div>
+        <div class="input-display" id="admin2_display">0</div>
+        <div class="numpad">
+            <button onclick="addDigit(1, 'admin2')">1</button>
+            <button onclick="addDigit(2, 'admin2')">2</button>
+            <button onclick="addDigit(3, 'admin2')">3</button>
+            <button onclick="addDigit(4, 'admin2')">4</button>
+            <button onclick="addDigit(5, 'admin2')">5</button>
+            <button onclick="addDigit(6, 'admin2')">6</button>
+            <button onclick="addDigit(7, 'admin2')">7</button>
+            <button onclick="addDigit(8, 'admin2')">8</button>
+            <button onclick="addDigit(9, 'admin2')">9</button>
+            <button onclick="addDigit(0, 'admin2')">0</button>
+            <button class="clear-btn" onclick="clearInput('admin2')">Clear</button>
+            <button onclick="enterThrow('admin2')">Enter</button>
+        </div>
+        <div class="log" id="admin2_log"></div>
+    </div>
+</div>
+
+<script>
+// Simulate the darts admin state
+const states = {
+    admin1: { inputStr: '', currentPlayer: 0, match_id: 5 },
+    admin2: { inputStr: '', currentPlayer: 0, match_id: 5 }
+};
+
+const logs = { admin1: [], admin2: [] };
+const wsConnections = { admin1: null, admin2: null };
+const bcChannels = { admin1: null, admin2: null };
+
+function addLog(panel, message, type = 'info') {
+    const timestamp = new Date().toLocaleTimeString();
+    const entry = `[${timestamp}] ${message}`;
+    logs[panel].push({ message: entry, type });
+    renderLog(panel);
+}
+
+function renderLog(panel) {
+    const logDiv = document.getElementById(panel + '_log');
+    logDiv.innerHTML = logs[panel].map(e =>
+        `<div class="log-entry ${e.type}">${e.message}</div>`
+    ).join('');
+    logDiv.scrollTop = logDiv.scrollHeight;
+}
+
+function updateDisplay(panel) {
+    const display = document.getElementById(panel + '_display');
+    display.textContent = states[panel].inputStr || '0';
+}
+
+function updateStatus(panel, connected) {
+    const statusDiv = document.getElementById(panel + '_status');
+    statusDiv.className = `status ${connected ? 'connected' : 'disconnected'}`;
+    statusDiv.textContent = connected ? 'Connected' : 'Disconnected';
+}
+
+function addDigit(digit, panel) {
+    if (states[panel].inputStr.length >= 3) return;
+    states[panel].inputStr += digit;
+    updateDisplay(panel);
+
+    addLog(panel, `Added digit ${digit}, input now: ${states[panel].inputStr}`);
+
+    // Broadcast to other "admins"
+    broadcastState(panel);
+}
+
+function clearInput(panel) {
+    states[panel].inputStr = '';
+    updateDisplay(panel);
+    addLog(panel, 'Input cleared');
+
+    // Broadcast clear
+    broadcastState(panel);
+}
+
+function enterThrow(panel) {
+    const val = states[panel].inputStr;
+    if (!val) return;
+    addLog(panel, `Entered throw: ${val}`);
+    clearInput(panel);
+}
+
+function broadcastState(senderPanel) {
+    const state = { ...states[senderPanel] };
+    addLog(senderPanel, `Broadcasting inputStr=${state.inputStr}`, 'success');
+
+    // Simulate BroadcastChannel
+    try {
+        if (!bcChannels[senderPanel]) {
+            bcChannels[senderPanel] = new BroadcastChannel('darts_test');
+            bcChannels[senderPanel].onmessage = (e) => {
+                const data = e.data;
+                if (data.match_id === 5 && data.state) {
+                    // Find which panel this is for (not the sender)
+                    const receiverPanel = senderPanel === 'admin1' ? 'admin2' : 'admin1';
+                    addLog(receiverPanel, `Received BC broadcast: inputStr=${data.state.inputStr}`, 'success');
+                    states[receiverPanel].inputStr = data.state.inputStr || '';
+                    updateDisplay(receiverPanel);
+                }
+            };
+        }
+        bcChannels[senderPanel].postMessage({ match_id: 5, state: state });
+        addLog(senderPanel, 'BroadcastChannel sent', 'success');
+    } catch (e) {
+        addLog(senderPanel, `BroadcastChannel error: ${e.message}`, 'error');
+    }
+
+    // Simulate WebSocket
+    try {
+        if (!wsConnections[senderPanel]) {
+            wsConnections[senderPanel] = new WebSocket('ws://localhost:3000');
+            wsConnections[senderPanel].onopen = () => {
+                updateStatus(senderPanel, true);
+                addLog(senderPanel, 'WebSocket connected', 'success');
+                // Join room
+                wsConnections[senderPanel].send(JSON.stringify({ type: 'join', match_id: '5' }));
+            };
+            wsConnections[senderPanel].onmessage = (e) => {
+                const msg = JSON.parse(e.data);
+                if (msg.type === 'state' && msg.payload) {
+                    const receiverPanel = senderPanel === 'admin1' ? 'admin2' : 'admin1';
+                    addLog(receiverPanel, `Received WS broadcast: inputStr=${msg.payload.inputStr}`, 'success');
+                    states[receiverPanel].inputStr = msg.payload.inputStr || '';
+                    updateDisplay(receiverPanel);
+                }
+            };
+            wsConnections[senderPanel].onclose = () => {
+                updateStatus(senderPanel, false);
+                addLog(senderPanel, 'WebSocket disconnected', 'warning');
+            };
+            wsConnections[senderPanel].onerror = (err) => {
+                addLog(senderPanel, `WebSocket error: ${err}`, 'error');
+            };
+        }
+
+        if (wsConnections[senderPanel].readyState === WebSocket.OPEN) {
+            wsConnections[senderPanel].send(JSON.stringify({
+                type: 'state',
+                match_id: '5',
+                payload: state
+            }));
+            addLog(senderPanel, 'WebSocket sent', 'success');
+        } else {
+            addLog(senderPanel, 'WebSocket not ready', 'warning');
+        }
+    } catch (e) {
+        addLog(senderPanel, `WebSocket error: ${e.message}`, 'error');
+    }
+}
+
+// Initialize
+addLog('admin1', 'Admin 1 initialized', 'success');
+addLog('admin2', 'Admin 2 initialized', 'success');
+
+// Test connection to WebSocket server
+setTimeout(() => {
+    fetch('http://localhost:3000')
+        .then(() => addLog('admin1', 'WebSocket server reachable', 'success'))
+        .catch(() => addLog('admin1', 'WebSocket server not reachable', 'error'));
+}, 1000);
+</script>
+
+</body>
+</html>

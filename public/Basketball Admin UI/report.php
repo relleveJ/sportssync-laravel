@@ -5,6 +5,12 @@
 // ============================================================
 
 require_once __DIR__ . '/db.php';
+// Load lightweight auth helpers so we can conditionally show admin actions
+require_once __DIR__ . '/../auth.php';
+// Determine whether current visitor is an admin (includes superadmin)
+$__u = currentUser();
+$__is_admin = $__u && (isset($__u['role']) && ($__u['role'] === 'admin' || $__u['role'] === 'superadmin'));
+
 
 $matchId = isset($_GET['match_id']) ? (int) $_GET['match_id'] : 0;
 
@@ -170,6 +176,8 @@ $jsonMatch = json_encode([
   .btn-export:active { transform: scale(0.96); }
   .btn-excel { background: #1e6c35; color: #fff; }
   .btn-print { background: var(--yellow); color: #111; }
+
+  .btn-new { background: transparent; color: #FFE600; border: 1px solid #FFE600; }
 
   /* ── PAGE CONTAINER ── */
   .report-page {
@@ -556,9 +564,13 @@ $jsonMatch = json_encode([
 <!-- EXPORT TOOLBAR -->
 <div class="export-bar no-print">
   <span>Match Report #<?= $matchId ?></span>
-  <button class="btn-export" onclick="if(confirm('Warning: data can be lost. Do you want to go back to the admin page?')) { window.location = 'index.php'; }">&#11013; Back</button>
+  <button class="btn-export" onclick="window.open('basketball_matches_admin.php','_blank')">📚 Match History</button>
+  <button class="btn-export" onclick="if(confirm('Warning: data can be lost. Do you want to go back to the admin page?')) { window.location = '/'; }">&#11013; Back</button>
   <button class="btn-export btn-excel" onclick="exportExcel()">&#11015; Export Excel</button>
   <button class="btn-export btn-print" onclick="window.print()">&#128438; Print PDF</button>
+  <?php if ($__is_admin): ?>
+    <button class="btn-export btn-new" onclick="bbNewMatch()">➕ New Match</button>
+  <?php endif; ?>
 </div>
 
 <div class="report-page">
@@ -569,6 +581,25 @@ $jsonMatch = json_encode([
     <div class="report-title">Official Match Report</div>
     <div class="match-id-badge">Match ID: #<?= $matchId ?></div>
   </div>
+
+  <?php if ($__is_admin): ?>
+  <script>
+  async function bbNewMatch() {
+    try {
+      if (!confirm('Create a new match and reset live state for all admins?')) return;
+      const res = await fetch('new_match.php', { method: 'POST', credentials: 'include' });
+      const j = await res.json();
+      if (j && j.success) {
+        try { sessionStorage.setItem('basketball_match_id', String(j.match_id)); } catch(e){}
+        // navigate to admin which will load the new match context
+        window.location.href = 'index.php';
+        return;
+      }
+      alert('Failed to create new match');
+    } catch (e) { console.error(e); alert('Error creating new match'); }
+  }
+  </script>
+  <?php endif; ?>
 
   <!-- MATCH INFO -->
   <div class="match-info-grid">

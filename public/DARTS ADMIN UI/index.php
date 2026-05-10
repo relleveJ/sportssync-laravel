@@ -1,8 +1,27 @@
+<?php
+// ── SportSync Guards ──────────────────────────────────────────
+$_ss_db_loaded = false;
+try {
+    $__dbf = file_exists(__DIR__.'/db.php') ? __DIR__.'/db.php' : (file_exists(__DIR__.'/../db.php') ? __DIR__.'/../db.php' : null);
+    if ($__dbf) { require_once $__dbf; $_ss_db_loaded = true; }
+    $__authf = file_exists(__DIR__.'/auth.php') ? __DIR__.'/auth.php' : (file_exists(__DIR__.'/../auth.php') ? __DIR__.'/../auth.php' : null);
+    if ($__authf) require_once $__authf;
+} catch (Throwable $e) {}
+if ($_ss_db_loaded && !empty($pdo)) {
+    $__sg=null;foreach([__DIR__,__DIR__.'/..',__DIR__.'/../..'] as $__d){if(file_exists($__d.'/system_guard.php')){$__sg=$__d.'/system_guard.php';break;}}if($__sg) require_once $__sg;
+    $_ss_is_admin = function_exists('currentUser') && in_array((currentUser()['role'] ?? ''), ['admin','superadmin'], true);
+    ss_check_maintenance($pdo, $_ss_is_admin);
+    ss_check_sport($pdo, 'Darts', $_ss_is_admin);
+    if ($_ss_is_admin) { ss_render_banners(); }
+}
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<?php $__ws_token = getenv('WS_TOKEN') ?: ''; ?>
+<meta name="ws-token" content="<?php echo htmlspecialchars($__ws_token, ENT_QUOTES); ?>">
 <title>🎯 Darts Iskorsit</title>
 <style>
   :root {
@@ -120,20 +139,7 @@
   #toast.show { display: block; animation: fadeInOut 2.5s forwards; }
   @keyframes fadeInOut { 0%{opacity:0} 10%{opacity:1} 70%{opacity:1} 100%{opacity:0} }
 
-  /* REPORT MODAL */
-  #report-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.92); z-index: 150; overflow-y: auto; padding: 20px; }
-  #report-modal.show { display: block; }
-  #report-content { max-width: 900px; margin: 0 auto; background: #1a1a1a; border: 2px solid var(--yellow); border-radius: 8px; padding: 24px; }
-  #report-content h1 { color: var(--yellow); text-align: center; border-bottom: 2px solid var(--yellow); padding-bottom: 12px; margin-bottom: 20px; }
-  #report-content h2 { color: var(--yellow); margin: 20px 0 10px; }
-  #report-content table { width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: .88rem; }
-  #report-content th { background: #222; color: var(--yellow); padding: 8px 10px; border: 1px solid #444; text-align: left; }
-  #report-content td { padding: 6px 10px; border: 1px solid #333; }
-  #report-content tr:nth-child(even) td { background: #111; }
-  .report-export-btns { display: flex; gap: 10px; flex-wrap: wrap; margin: 16px 0; }
-  .report-export-btns button { background: var(--red); color: #fff; border: none; padding: 10px 18px; cursor: pointer; font-weight: bold; border-radius: 4px; }
-  .report-export-btns button:hover { filter: brightness(1.2); }
-  .close-report-btn { background: #333; color: var(--yellow); border: 1px solid var(--yellow); padding: 10px 18px; cursor: pointer; font-weight: bold; border-radius: 4px; }
+  /* REPORT MODAL removed — server-side report is used instead */
 
   /* Responsive */
   @media (max-width: 768px) {
@@ -156,10 +162,12 @@
 <div id="nav">
   <h1>🎯 DARTS ISKORSIT</h1>
   <div id="nav-btns">
-    <button class="nav-btn" onclick="location.href='../landingpage.php'">← Back to sports</button>
+    <button class="nav-btn" onclick="location.href='/'">← Back to Dashboard</button>
     <button class="nav-btn" onclick="saveCurrentLeg()">💾 Save File</button>
+    <button class="nav-btn" onclick="openDeclareModal()">🏁 Declare Winner</button>
     <button class="nav-btn" onclick="location.href='history.html'">📋 History</button>
-    <button class="nav-btn" onclick="newMatch()">🔄 New Match</button>
+    <button class="nav-btn" onclick="newMatch()">🆕 New Match</button>
+    <button class="nav-btn" style="border-color:#e65c00;color:#e65c00" onclick="resetMatch()">🔄 Reset Match</button>
   </div>
 </div>
 
@@ -167,15 +175,22 @@
 <div id="settings">
   <div class="setting-group">
     <label>GAME:</label>
-    <div style="display:flex">
-      <button class="seg-btn active" data-gt="301" onclick="setGameType('301',this)">301</button>
-      <button class="seg-btn" data-gt="501" onclick="setGameType('501',this)">501</button>
-      <button class="seg-btn" data-gt="701" onclick="setGameType('701',this)">701</button>
+    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+      <div style="display:flex">
+        <button class="seg-btn active" data-gt="301" onclick="setGameType('301',this)">301</button>
+        <button class="seg-btn" data-gt="501" onclick="setGameType('501',this)">501</button>
+        <button class="seg-btn" data-gt="701" onclick="setGameType('701',this)">701</button>
+      </div>
+      <input type="number" id="custom-game-input" min="1" max="9999"
+             placeholder="Custom"
+             style="width:80px;background:var(--input-bg);color:var(--text);border:1px solid #555;padding:5px 6px;font-size:.85rem;font-weight:bold;border-radius:3px;"
+             onchange="applyCustomGameType(this.value)"
+             title="Enter any custom game value">
     </div>
   </div>
   <div class="setting-group">
     <label>LEGS TO WIN:</label>
-    <input type="number" id="legs-to-win-input" value="3" min="1" max="9" onchange="legsToWin=+this.value">
+    <input type="number" id="legs-to-win-input" value="3" min="1" max="99" onchange="applyLegsToWin(+this.value)">
   </div>
   <div class="setting-group">
     <label>MODE:</label>
@@ -230,593 +245,11 @@
 </div>
 
 <!-- REPORT MODAL -->
-<div id="report-modal">
-  <div id="report-content">
-    <div id="report-inner"></div>
-    <div style="margin-top:16px">
-      <button class="close-report-btn" onclick="closeReport()">✕ Close Report</button>
-    </div>
-  </div>
-</div>
+<!-- report modal removed; server-side report page used -->
 
 <!-- TOAST -->
 <div id="toast"></div>
 
-<script>
-// ================================================================
-// STATE
-// ================================================================
-let gameType = 301;
-let legsToWin = 3;
-let mode = 'one-sided';
-let currentPlayer = 0; // index 0-3
-let inputStr = '';
-let matchId = null;
-let currentLeg = 1;
-
-const COLORS = ['#CC0000','#003399','#FFE600','#E65C00'];
-const TEXT_COLORS = ['#fff','#fff','#000','#fff'];
-const DEFAULT_NAMES = ['PLAYER 1','PLAYER 2','PLAYER 3','PLAYER 4'];
-
-let players = [0,1,2,3].map(i => ({
-  playerNumber: i+1,
-  name: DEFAULT_NAMES[i],
-  team: 'TEAM',
-  score: gameType,
-  legsWon: 0,
-  throws: [],        // [{value, scoreBefore, scoreAfter, isBust}]
-  undoStack: [],
-  redoStack: [],
-  saveEnabled: true,
-  dbPlayerId: null,
-}));
-
-// ================================================================
-// RENDER
-// ================================================================
-function renderCards() {
-  const area = document.getElementById('cards-area');
-  area.innerHTML = '';
-  area.className = mode === 'two-sided' ? 'two-sided' : '';
-
-  if (mode === 'two-sided') {
-    const left = document.createElement('div');
-    left.className = 'side-group';
-    const right = document.createElement('div');
-    right.className = 'side-group';
-    players.forEach((p, i) => {
-      const card = buildCard(p, i);
-      (i < 2 ? left : right).appendChild(card);
-    });
-    area.appendChild(left);
-    area.appendChild(right);
-  } else {
-    players.forEach((p, i) => area.appendChild(buildCard(p, i)));
-  }
-}
-
-function buildCard(p, i) {
-  const card = document.createElement('div');
-  card.className = 'player-card' + (i === currentPlayer ? ' active-card' : '');
-  card.id = 'card-' + i;
-  card.onclick = () => selectPlayer(i);
-
-  // Header
-  const hdr = document.createElement('div');
-  hdr.className = 'card-header';
-  hdr.style.background = COLORS[i];
-
-  const nameWrap = document.createElement('div');
-  nameWrap.className = 'player-names';
-
-  const nameInp = document.createElement('input');
-  nameInp.className = 'player-name-edit';
-  nameInp.value = p.name;
-  nameInp.style.color = TEXT_COLORS[i];
-  nameInp.onclick = e => e.stopPropagation();
-  nameInp.onchange = e => { p.name = e.target.value.toUpperCase(); };
-  nameInp.onblur = e => { p.name = e.target.value.toUpperCase(); };
-
-  const teamInp = document.createElement('input');
-  teamInp.className = 'team-name-edit';
-  teamInp.value = p.team;
-  teamInp.style.color = TEXT_COLORS[i] === '#000' ? '#333' : 'rgba(255,255,255,.7)';
-  teamInp.onclick = e => e.stopPropagation();
-  teamInp.onchange = e => { p.team = e.target.value; };
-
-  nameWrap.appendChild(nameInp);
-  nameWrap.appendChild(teamInp);
-
-  const saveWrap = document.createElement('div');
-  saveWrap.className = 'save-checkbox-wrap';
-  const saveChk = document.createElement('input');
-  saveChk.type = 'checkbox';
-  saveChk.checked = p.saveEnabled;
-  saveChk.onclick = e => e.stopPropagation();
-  saveChk.onchange = e => { p.saveEnabled = e.target.checked; };
-  const saveLabel = document.createElement('span');
-  saveLabel.textContent = 'SAVE';
-  saveLabel.style.color = TEXT_COLORS[i];
-  saveWrap.appendChild(saveChk);
-  saveWrap.appendChild(saveLabel);
-
-  hdr.appendChild(nameWrap);
-  hdr.appendChild(saveWrap);
-  card.appendChild(hdr);
-
-  // Score
-  const scoreArea = document.createElement('div');
-  scoreArea.className = 'score-area';
-  const scoreNum = document.createElement('div');
-  scoreNum.className = 'score-number';
-  scoreNum.id = 'score-' + i;
-  scoreNum.textContent = p.score;
-  const scoreLabel = document.createElement('div');
-  scoreLabel.className = 'score-label';
-  scoreLabel.textContent = 'LEG TRACKER';
-  scoreArea.appendChild(scoreNum);
-  scoreArea.appendChild(scoreLabel);
-  card.appendChild(scoreArea);
-
-  // Leg won
-  const lwArea = document.createElement('div');
-  lwArea.className = 'leg-won-area';
-  const lwLabel = document.createElement('div');
-  lwLabel.className = 'leg-won-label';
-  lwLabel.textContent = 'LEG WON';
-  const lwCounter = document.createElement('div');
-  lwCounter.className = 'leg-won-counter';
-
-  const minusBtn = document.createElement('button');
-  minusBtn.className = 'lw-btn lw-minus';
-  minusBtn.textContent = '−';
-  minusBtn.onclick = e => { e.stopPropagation(); p.legsWon = Math.max(0, p.legsWon-1); updateCard(i); };
-
-  const countSpan = document.createElement('div');
-  countSpan.className = 'leg-won-count';
-  countSpan.id = 'legs-won-' + i;
-  countSpan.textContent = p.legsWon;
-
-  const plusBtn = document.createElement('button');
-  plusBtn.className = 'lw-btn lw-plus';
-  plusBtn.textContent = '+';
-  plusBtn.onclick = e => { e.stopPropagation(); p.legsWon++; updateCard(i); };
-
-  lwCounter.appendChild(minusBtn);
-  lwCounter.appendChild(countSpan);
-  lwCounter.appendChild(plusBtn);
-  lwArea.appendChild(lwLabel);
-  lwArea.appendChild(lwCounter);
-  card.appendChild(lwArea);
-
-  // Last throws
-  const ltArea = document.createElement('div');
-  ltArea.className = 'last-throws-area';
-  ltArea.id = 'throws-' + i;
-  renderThrowChips(p, ltArea);
-  card.appendChild(ltArea);
-
-  return card;
-}
-
-function renderThrowChips(p, container) {
-  container.innerHTML = '';
-  const last4 = p.throws.slice(-4);
-  last4.forEach(t => {
-    const chip = document.createElement('span');
-    chip.className = 'throw-chip' + (t.isBust ? ' bust' : '');
-    chip.textContent = t.isBust ? 'BUST' : t.value;
-    container.appendChild(chip);
-  });
-}
-
-function updateCard(i) {
-  const p = players[i];
-  const scoreEl = document.getElementById('score-' + i);
-  if (scoreEl) scoreEl.textContent = p.score;
-  const lwEl = document.getElementById('legs-won-' + i);
-  if (lwEl) lwEl.textContent = p.legsWon;
-  const chipsEl = document.getElementById('throws-' + i);
-  if (chipsEl) renderThrowChips(p, chipsEl);
-  // active glow
-  const card = document.getElementById('card-' + i);
-  if (card) {
-    card.className = 'player-card' + (i === currentPlayer ? ' active-card' : '');
-  }
-  updateArrowBtns();
-}
-
-function updateArrowBtns() {
-  const p = players[currentPlayer];
-  document.getElementById('undo-btn').disabled = p.throws.length === 0;
-  document.getElementById('redo-btn').disabled = p.redoStack.length === 0;
-}
-
-// ================================================================
-// PLAYER SELECTION
-// ================================================================
-function selectPlayer(i) {
-  currentPlayer = i;
-  players.forEach((_, idx) => {
-    const c = document.getElementById('card-' + idx);
-    if (c) c.className = 'player-card' + (idx === i ? ' active-card' : '');
-  });
-  updateArrowBtns();
-}
-
-// ================================================================
-// NUMPAD
-// ================================================================
-function padPress(digit) {
-  if (inputStr.length >= 3) return;
-  inputStr += digit;
-  document.getElementById('throw-display').textContent = inputStr || '0';
-}
-
-function padClear() {
-  inputStr = '';
-  document.getElementById('throw-display').textContent = '0';
-}
-
-function enterThrow() {
-  const val = parseInt(inputStr, 10);
-  if (isNaN(val) || val < 0 || val > 180) { padClear(); return; }
-  padClear();
-
-  const p = players[currentPlayer];
-  const before = p.score;
-  const after = before - val;
-
-  let isBust = false;
-  let finalScore = after;
-
-  if (after < 0 || after === 1) {
-    isBust = true;
-    finalScore = before;
-  }
-
-  const throwEntry = { value: val, scoreBefore: before, scoreAfter: finalScore, isBust };
-  p.throws.push(throwEntry);
-  p.redoStack = []; // clear redo on new throw
-  p.score = finalScore;
-  updateCard(currentPlayer);
-
-  if (!isBust && after === 0) {
-    // LEG WON
-    triggerLegWon(currentPlayer);
-  }
-}
-
-// Keyboard support
-document.addEventListener('keydown', e => {
-  if (e.key >= '0' && e.key <= '9') padPress(e.key);
-  else if (e.key === 'Enter') enterThrow();
-  else if (e.key === 'Backspace' || e.key === 'Delete' || e.key.toLowerCase() === 'c') padClear();
-  else if (e.key === 'ArrowLeft') undoThrow();
-  else if (e.key === 'ArrowRight') redoThrow();
-  else if (e.key >= '1' && e.key <= '4' && e.altKey) selectPlayer(parseInt(e.key)-1);
-});
-
-// ================================================================
-// UNDO / REDO
-// ================================================================
-function undoThrow() {
-  const p = players[currentPlayer];
-  if (!p.throws.length) return;
-  const last = p.throws.pop();
-  p.redoStack.push(last);
-  p.score = last.scoreBefore;
-  updateCard(currentPlayer);
-}
-
-function redoThrow() {
-  const p = players[currentPlayer];
-  if (!p.redoStack.length) return;
-  const t = p.redoStack.pop();
-  p.throws.push(t);
-  p.score = t.scoreAfter;
-  updateCard(currentPlayer);
-}
-
-// ================================================================
-// LEG WON
-// ================================================================
-function triggerLegWon(playerIdx) {
-  const p = players[playerIdx];
-  p.legsWon++;
-  updateCard(playerIdx);
-
-  autoSaveLeg(playerIdx, true, () => {
-    if (p.legsWon >= legsToWin) {
-      triggerMatchWon(playerIdx);
-    } else {
-      showModal(
-        `🏆 ${p.name} Wins the Leg!`,
-        `Leg ${currentLeg} complete. Total legs won: ${p.legsWon}`,
-        [{label: 'Start Next Leg', cls: '', cb: startNextLeg}]
-      );
-    }
-  });
-}
-
-function startNextLeg() {
-  currentLeg++;
-  players.forEach(p => {
-    p.score = gameType;
-    p.throws = [];
-    p.undoStack = [];
-    p.redoStack = [];
-  });
-  closeModal();
-  renderCards();
-}
-
-// ================================================================
-// MATCH WON
-// ================================================================
-function triggerMatchWon(playerIdx) {
-  const p = players[playerIdx];
-  autoSaveMatch(p);
-  showModal(
-    `🏆 ${p.name} Wins the Match!`,
-    `Congratulations! ${p.name} has won ${p.legsWon} legs.`,
-    [
-      {label: 'View Report', cls: '', cb: () => { closeModal(); showReport(); }},
-      {label: 'New Match', cls: 'secondary', cb: newMatch}
-    ]
-  );
-}
-
-// ================================================================
-// SETTINGS
-// ================================================================
-function setGameType(gt, btn) {
-  if (gameType === parseInt(gt)) return;
-  const confirmed = players.some(p => p.throws.length > 0 || p.legsWon > 0)
-    ? confirm(`Change game type to ${gt}? This will reset all scores and legs.`)
-    : true;
-  if (!confirmed) return;
-  document.querySelectorAll('[data-gt]').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
-  gameType = parseInt(gt);
-  resetAllScores();
-}
-
-function setMode(m, btn) {
-  mode = m;
-  btn.parentElement.querySelectorAll('.seg-btn').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
-  renderCards();
-}
-
-function toggleDark(on) {
-  document.body.classList.toggle('light-mode', !on);
-  localStorage.setItem('darkMode', on ? '1' : '0');
-}
-
-function resetAllScores() {
-  matchId = null;
-  currentLeg = 1;
-  players.forEach(p => {
-    p.score = gameType;
-    p.throws = [];
-    p.undoStack = [];
-    p.redoStack = [];
-    p.legsWon = 0;
-    p.dbPlayerId = null;
-  });
-  renderCards();
-}
-
-function newMatch() {
-  if (!confirm('Start a new match? All current progress will be cleared.')) return;
-  matchId = null;
-  currentLeg = 1;
-  players = [0,1,2,3].map(i => ({
-    playerNumber: i+1,
-    name: DEFAULT_NAMES[i],
-    team: 'TEAM',
-    score: gameType,
-    legsWon: 0,
-    throws: [],
-    undoStack: [],
-    redoStack: [],
-    saveEnabled: true,
-    dbPlayerId: null,
-  }));
-  closeModal();
-  renderCards();
-}
-
-// ================================================================
-// MODAL HELPERS
-// ================================================================
-function showModal(title, body, actions) {
-  document.getElementById('modal-title').textContent = title;
-  document.getElementById('modal-body').textContent = body;
-  const actDiv = document.getElementById('modal-actions');
-  actDiv.innerHTML = '';
-  actions.forEach(a => {
-    const btn = document.createElement('button');
-    btn.className = 'modal-btn ' + (a.cls || '');
-    btn.textContent = a.label;
-    btn.onclick = a.cb;
-    actDiv.appendChild(btn);
-  });
-  document.getElementById('modal-overlay').classList.add('show');
-}
-
-function closeModal() {
-  document.getElementById('modal-overlay').classList.remove('show');
-}
-
-// ================================================================
-// TOAST
-// ================================================================
-function showToast(msg) {
-  const t = document.getElementById('toast');
-  t.textContent = msg;
-  t.className = 'show';
-  setTimeout(() => { t.className = ''; }, 2800);
-}
-
-// ================================================================
-// SAVE LEG (auto + manual)
-// ================================================================
-function buildSavePayload(isCompleted, winnerIdx) {
-  return {
-    match_id: matchId,
-    game_type: String(gameType),
-    legs_to_win: legsToWin,
-    mode: mode,
-    leg_number: currentLeg,
-    is_completed: isCompleted,
-    players: players.map((p, i) => ({
-      player_number: p.playerNumber,
-      player_name: p.name,
-      team_name: p.team,
-      save_enabled: p.saveEnabled ? 1 : 0,
-      is_winner: i === winnerIdx ? 1 : 0,
-      throws: p.throws.map(t => ({
-        throw_value: t.value,
-        score_before: t.scoreBefore,
-        score_after: t.scoreAfter,
-        is_bust: t.isBust ? 1 : 0,
-      }))
-    }))
-  };
-}
-
-function autoSaveLeg(winnerIdx, isCompleted, callback) {
-  const payload = buildSavePayload(isCompleted, winnerIdx);
-  fetch('save_leg.php', {
-    method: 'POST',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify(payload)
-  })
-  .then(r => r.json())
-  .then(data => {
-    if (data.success) {
-      matchId = data.match_id;
-      // Store DB player IDs
-      if (data.player_ids) {
-        players.forEach(p => {
-          const dbId = data.player_ids[p.playerNumber];
-          if (dbId) p.dbPlayerId = dbId;
-        });
-      }
-    }
-    if (callback) callback();
-  })
-  .catch(() => { if (callback) callback(); });
-}
-
-function saveCurrentLeg() {
-  const payload = buildSavePayload(false, -1);
-  fetch('save_leg.php', {
-    method: 'POST',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify(payload)
-  })
-  .then(r => r.json())
-  .then(data => {
-    if (data.success) {
-      matchId = data.match_id;
-      showToast('Leg progress saved.');
-    } else {
-      showToast('Save failed: ' + (data.message || 'unknown error'));
-    }
-  })
-  .catch(() => showToast('Save failed (network error).'));
-}
-
-// ================================================================
-// SAVE MATCH
-// ================================================================
-function autoSaveMatch(winnerPlayer) {
-  if (!matchId) return;
-  const winnerDbId = winnerPlayer.dbPlayerId;
-  const payload = {
-    match_id: matchId,
-    total_legs: players.reduce((s, p) => s + p.legsWon, 0),
-    legs_won: { p1: players[0].legsWon, p2: players[1].legsWon, p3: players[2].legsWon, p4: players[3].legsWon },
-    winner_player_id: winnerDbId,
-    winner_name: winnerPlayer.name,
-  };
-  fetch('save_match.php', {
-    method: 'POST',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify(payload)
-  }).catch(() => {});
-}
-
-// ================================================================
-// REPORT (inline)
-// ================================================================
-function showReport() {
-  const inner = document.getElementById('report-inner');
-  inner.innerHTML = buildReportHTML();
-  document.getElementById('report-modal').classList.add('show');
-}
-
-function closeReport() {
-  document.getElementById('report-modal').classList.remove('show');
-}
-
-function buildReportHTML() {
-  const totalLegs = players.reduce((s, p) => s + p.legsWon, 0);
-  const winner = [...players].sort((a,b) => b.legsWon - a.legsWon)[0];
-  const date = new Date().toLocaleString();
-
-  // Compute avg throws
-  // For inline report we use current session data — if matchId exists, link to PHP report
-  let html = `<h1>🎯 ${gameType} Darts Match Report</h1>`;
-
-  if (matchId) {
-    html += `<div class="report-export-btns">
-      <button onclick="window.open('report_export.php?match_id=${matchId}&format=html&download=1','_blank')">⬇ Save as HTML</button>
-      <button onclick="window.open('report_export.php?match_id=${matchId}&format=excel','_blank')">⬇ Save as Excel</button>
-      <button onclick="window.open('report_export.php?match_id=${matchId}&format=print','_blank')">🖨 Print / PDF</button>
-    </div>`;
-  }
-
-  html += `<h2>Match Overview</h2>
-  <table><tr><th>Game Type</th><th>Legs to Win</th><th>Mode</th><th>Date</th><th>Winner</th></tr>
-  <tr><td>${gameType}</td><td>${legsToWin}</td><td>${mode}</td><td>${date}</td><td style="color:var(--green);font-weight:bold">${winner.name}</td></tr></table>`;
-
-  html += `<h2>Player Roster</h2>
-  <table><tr><th>Player #</th><th>Name</th><th>Team</th></tr>`;
-  players.forEach((p,i) => {
-    html += `<tr><td>${i+1}</td><td>${escH(p.name)}</td><td>${escH(p.team)}</td></tr>`;
-  });
-  html += `</table>`;
-
-  html += `<h2>Final Standings</h2>
-  <table><tr><th>Rank</th><th>Player</th><th>Team</th><th>Legs Won</th></tr>`;
-  const sorted = [...players].sort((a,b) => b.legsWon - a.legsWon);
-  sorted.forEach((p,i) => {
-    html += `<tr><td>${i+1}</td><td style="${i===0?'color:var(--green);font-weight:bold':''}">${escH(p.name)}</td><td>${escH(p.team)}</td><td>${p.legsWon}</td></tr>`;
-  });
-  html += `</table>`;
-
-  return html;
-}
-
-function escH(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-
-// ================================================================
-// INIT
-// ================================================================
-(function init() {
-  // Dark mode from localStorage
-  const dark = localStorage.getItem('darkMode');
-  const isDark = dark === null ? true : dark === '1';
-  document.getElementById('dark-mode-toggle').checked = isDark;
-  document.body.classList.toggle('light-mode', !isDark);
-
-  renderCards();
-  updateArrowBtns();
-})();
-</script>
+<script src="darst_admin.js?<?php echo time(); ?>"></script>
 </body>
 </html>

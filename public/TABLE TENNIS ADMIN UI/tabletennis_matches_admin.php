@@ -1,5 +1,25 @@
 <?php
-require_once 'db_config.php';
+$_base = __DIR__;
+if (!file_exists($_base . '/db_config.php') && file_exists($_base . '/../auth.php')) {
+    $_base = realpath(__DIR__ . '/..');
+}
+require_once $_base . '/db_config.php';
+require_once $_base . '/../auth.php';
+$user = requireRole('admin', 'superadmin');
+
+// ── SportSync Guards ──────────────────────────────────────────
+$__sg=null;foreach([__DIR__,__DIR__.'/..',__DIR__.'/../..'] as $__d){if(file_exists($__d.'/system_guard.php')){$__sg=$__d.'/system_guard.php';break;}}if($__sg) require_once $__sg;
+$_pdo_guard = null;
+try {
+    $__dbf = file_exists(__DIR__.'/db.php') ? __DIR__.'/db.php' : (file_exists(__DIR__.'/../db.php') ? __DIR__.'/../db.php' : null);
+    if ($__dbf) { require_once $__dbf; $_pdo_guard = $pdo ?? null; }
+} catch (Throwable $e) {}
+if ($_pdo_guard) {
+    ss_check_maintenance($_pdo_guard, true);
+    ss_check_sport($_pdo_guard, 'Table Tennis', true);
+}
+
+
 $q = isset($_GET['q']) ? trim($_GET['q']) : '';
 $statusFilter = isset($_GET['status']) ? trim($_GET['status']) : '';
  $sql = "SELECT id, match_type, best_of, team_a_name, team_b_name, status, winner_name, created_at FROM table_tennis_matches";
@@ -43,8 +63,13 @@ body{font-family:Arial,sans-serif;padding:18px;background:#f4f4f4}
 </style>
 </head>
 <body>
+<?php if (!empty($_pdo_guard)) ss_render_banners(); ?>
 <div class="container">
-  <h2>Table Tennis Matches — Admin</h2>
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+<button onclick="window.history.back()" title="Go back">⬅ Back</button>    
+    <a href="/" style="padding:8px 16px;background:#003366;color:#fff;border-radius:4px;text-decoration:none;font-size:14px;font-weight:700;">&#8592; Back to Dashboard</a>
+    <h2>Table Tennis Matches — Admin</h2>
+  </div>
   <div class="toolbar">
     <form id="searchForm" method="GET" style="display:flex;gap:8px;align-items:center">
       <input type="text" name="q" placeholder="Search by match id or team name" value="<?= htmlspecialchars($q) ?>" style="padding:8px;width:320px">
@@ -87,17 +112,19 @@ body{font-family:Arial,sans-serif;padding:18px;background:#f4f4f4}
 <?php if (empty($matches)): ?>
       <tr><td colspan="9" style="text-align:center;color:#666;padding:12px">No matches found.</td></tr>
 <?php else: foreach ($matches as $m): ?>
-      <tr>
+      <tr id="match-row-<?= (int)$m['id'] ?>">
         <td><input class="chk" type="checkbox" name="match_ids[]" value="<?= (int)$m['id'] ?>"></td>
         <td><?= (int)$m['id'] ?></td>
-        <td><?= htmlspecialchars($m['team_a_name']) ?> vs <?= htmlspecialchars($m['team_b_name']) ?></td>
-        <td><?= htmlspecialchars($m['match_type']) ?></td>
-        <td><?= (int)$m['best_of'] ?></td>
-        <td><?= htmlspecialchars($m['status']) ?></td>
-        <td><?= htmlspecialchars($m['winner_name'] ?? '') ?></td>
+        <td class="js-teams"><?= htmlspecialchars($m['team_a_name']) ?> vs <?= htmlspecialchars($m['team_b_name']) ?></td>
+        <td class="js-type"><?= htmlspecialchars($m['match_type']) ?></td>
+        <td class="js-best"><?= (int)$m['best_of'] ?></td>
+        <td class="js-status"><?= htmlspecialchars($m['status']) ?></td>
+        <td class="js-winner"><?= htmlspecialchars($m['winner_name'] ?? '') ?></td>
         <td><?= htmlspecialchars($m['created_at']) ?></td>
         <td>
           <a href="tabletennis_report.php?match_id=<?= (int)$m['id'] ?>" target="_blank">View Report</a>
+          &nbsp;|&nbsp;
+          <button type="button" class="btn small" onclick="openMatchEdit(<?= (int)$m['id'] ?>)">Edit</button>
           &nbsp;|&nbsp;
           <button type="button" class="btn small" onclick="resetMatch(<?= (int)$m['id'] ?>)">Reset</button>
         </td>
@@ -109,12 +136,16 @@ body{font-family:Arial,sans-serif;padding:18px;background:#f4f4f4}
 </div>
 
 <script>
+window.MATCH_HISTORY_EDIT_CONFIG = { endpoint: 'update_match.php', kind: 'set', rowPrefix: 'match-row-' };
+</script>
+<script src="../match_history_edit.js"></script>
+<script>
 (function(){ try{ const el=document.getElementById('currentMatchId'); const id = sessionStorage.getItem('tabletennis_match_id'); if (id) el.textContent = id; else el.textContent = '(none)'; }catch(e){} })();
 document.getElementById('chkAll').addEventListener('change', function(){ document.querySelectorAll('.chk').forEach(c=>c.checked=this.checked); });
 document.getElementById('refreshBtn').addEventListener('click', function(){ location.reload(); });
-function resetMatch(id) { if (!confirm('Reset match ' + id + '? This will clear saved sets.')) return; fetch('reset_match.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ match_id: id }) }).then(r => r.json()).then(j => { if (j && j.success) { alert('Match reset'); location.reload(); } else { alert('Reset failed: ' + (j && j.message ? j.message : 'Unknown')); } }).catch(e=>{console.error(e); alert('Reset request failed');}); }
-document.getElementById('deleteSelected').addEventListener('click', function(){ const ids = Array.from(document.querySelectorAll('.chk:checked')).map(i=>parseInt(i.value,10)); if (!ids.length) { alert('Select at least one match to delete.'); return; } if (!confirm('Delete selected match(es)? This will remove match records permanently.')) return; fetch('delete_match.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ match_ids: ids }) }).then(r=>r.json()).then(j=>{ if (j && j.success) { alert('Deleted'); location.reload(); } else { alert('Delete failed: ' + (j && j.message ? j.message : 'Unknown')); } }).catch(e=>{console.error(e); alert('Delete request failed');}); });
-document.getElementById('resetSelected').addEventListener('click', function(){ const ids = Array.from(document.querySelectorAll('.chk:checked')).map(i=>parseInt(i.value,10)); if (!ids.length) { alert('Select at least one match to reset.'); return; } if (!confirm('Reset selected match(es)?')) return; Promise.all(ids.map(id => fetch('reset_match.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ match_id: id }) }).then(r=>r.json()).catch(()=>({success:false})) )).then(results=>{ alert('Reset completed'); location.reload(); }).catch(e=>{console.error(e); alert('Reset request failed'); }); });
+function resetMatch(id) { if (!confirm('Reset match ' + id + '? This will clear saved sets.')) return; fetch('reset_match.php', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ match_id: id }) }).then(r => r.json()).then(j => { if (j && j.success) { alert('Match reset'); location.reload(); } else { alert('Reset failed: ' + (j && j.message ? j.message : 'Unknown')); } }).catch(e=>{console.error(e); alert('Reset request failed');}); }
+document.getElementById('deleteSelected').addEventListener('click', function(){ const ids = Array.from(document.querySelectorAll('.chk:checked')).map(i=>parseInt(i.value,10)); if (!ids.length) { alert('Select at least one match to delete.'); return; } if (!confirm('Delete selected match(es)? This will remove match records permanently.')) return; fetch('delete_match.php', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ match_ids: ids }) }).then(r=>r.json()).then(j=>{ if (j && j.success) { alert('Deleted'); location.reload(); } else { alert('Delete failed: ' + (j && j.message ? j.message : 'Unknown')); } }).catch(e=>{console.error(e); alert('Delete request failed');}); });
+document.getElementById('resetSelected').addEventListener('click', function(){ const ids = Array.from(document.querySelectorAll('.chk:checked')).map(i=>parseInt(i.value,10)); if (!ids.length) { alert('Select at least one match to reset.'); return; } if (!confirm('Reset selected match(es)?')) return; Promise.all(ids.map(id => fetch('reset_match.php', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ match_id: id }) }).then(r=>r.json()).catch(()=>({success:false})) )).then(results=>{ alert('Reset completed'); location.reload(); }).catch(e=>{console.error(e); alert('Reset request failed'); }); });
 </script>
 </body>
 </html>

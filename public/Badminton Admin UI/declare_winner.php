@@ -34,5 +34,40 @@ if (!$stmt->execute()) {
 }
 $stmt->close();
 
+// Best-effort: notify ws-relay about declared winner so viewers/admins update
+try {
+    $teamA = null; $teamB = null;
+    try {
+        $mstmt = $mysqli->prepare('SELECT team_a_name, team_b_name, committee_official FROM badminton_matches WHERE id = ? LIMIT 1');
+        if ($mstmt) {
+            $mstmt->bind_param('i', $match_id);
+            $mstmt->execute();
+            $res = $mstmt->get_result();
+            $row = $res ? $res->fetch_assoc() : null;
+            if ($row) { $teamA = $row['team_a_name'] ?? null; $teamB = $row['team_b_name'] ?? null; $committee = $row['committee_official'] ?? null; }
+            $mstmt->close();
+        }
+    } catch (Throwable $_) { }
+
+    $wsRelay = getenv('WS_RELAY_URL') ?: 'http://127.0.0.1:3000/emit';
+    $wsToken = getenv('WS_TOKEN') ?: null;
+    $payload = ['match_id' => $match_id, 'winner_name' => $winner_name];
+    if ($teamA) $payload['team_a_name'] = $teamA;
+    if ($teamB) $payload['team_b_name'] = $teamB;
+    if (!empty($committee)) $payload['committee'] = $committee;
+    $emit = json_encode(['type' => 'new_match', 'match_id' => $match_id, 'sport' => 'badminton', 'payload' => $payload]);
+    $ch = curl_init($wsRelay);
+    $headers = ['Content-Type: application/json'];
+    if ($wsToken) $headers[] = 'X-WS-Token: ' . $wsToken;
+    curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, $emit);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT_MS, 200);
+    curl_setopt($ch, CURLOPT_TIMEOUT_MS, 500);
+    @curl_exec($ch);
+    @curl_close($ch);
+} catch (Throwable $_) { /* non-fatal */ }
+
 echo json_encode(['success' => true, 'message' => "$winner_name declared as winner."]); 
 exit;

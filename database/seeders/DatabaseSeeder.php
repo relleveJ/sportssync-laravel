@@ -21,5 +21,7 @@ class DatabaseSeeder extends Seeder
             'name' => 'Test User',
             'email' => 'test@example.com',
         ]);
+        // Ensure a superadmin exists (email/password configurable via env)
+        $this->call(\Database\Seeders\SuperadminSeeder::class);
     }
 }

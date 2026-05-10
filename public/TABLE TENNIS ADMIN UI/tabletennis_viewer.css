@@ -10,36 +10,123 @@ body {
   flex-direction: column;
 }
 
+/* ===== BACK BUTTON ===== */
+.back-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: #111;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 16px;
+  color: #FFE600;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  text-decoration: none;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.back-btn:hover {
+  background: #222;
+  box-shadow: 0 0 12px rgba(255,230,0,0.25);
+}
+
+.back-btn:active {
+  transform: scale(0.96);
+}
+
+.back-btn svg {
+  flex-shrink: 0;
+}
+
+.back-btn-text {
+  display: inline;
+}
+
+@media (max-width: 600px) {
+  .back-btn {
+    padding: 8px 12px;
+  }
+  .back-btn-text {
+    display: none;
+  }
+}
+
 /* ===== TOP NAV BAR ===== */
 .top-nav {
   background: #FFE600;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 24px;
-  height: 60px;
+  padding: 10px 16px;
+  min-height: 60px;
   flex-shrink: 0;
+  gap: 12px;
+  flex-wrap: wrap;
+  position: sticky;
+  top: 0;
+  z-index: 100;
 }
-.top-nav .logo {
-  font-size: 20px;
-  font-weight: 900;
-  letter-spacing: 1px;
-}
+
 .top-nav .nav-title {
-  font-size: 22px;
+  font-size: 20px;
   font-weight: 900;
   color: #111;
   letter-spacing: 2px;
   text-transform: uppercase;
+  flex: 1;
+  text-align: center;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
+
 .top-nav .nav-right {
-  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.nav-live-badge {
+  font-size: 12px;
   font-weight: 700;
   color: #111;
   background: rgba(0,0,0,0.1);
-  padding: 6px 14px;
-  border-radius: 4px;
+  padding: 8px 14px;
+  border-radius: 6px;
   letter-spacing: 1px;
+  white-space: nowrap;
+}
+
+@media (max-width: 768px) {
+  .top-nav .nav-title {
+    font-size: 16px;
+    letter-spacing: 1px;
+  }
+  .nav-live-badge {
+    font-size: 11px;
+    padding: 6px 10px;
+  }
+}
+
+@media (max-width: 480px) {
+  .top-nav .nav-title {
+    font-size: 14px;
+    order: 2;
+    flex: 1 1 100%;
+    text-align: center;
+    padding: 4px 0;
+  }
+  .nav-live-badge {
+    display: none;
+  }
 }
 
 /* ===== MATCH TYPE BAR (display only) ===== */
@@ -295,3 +382,76 @@ body {
   top: 8px;
   font-size: 20px;
 }
+
+/* ? SSOT WINNER MODAL � Table Tennis Viewer Only */
+#winnerModal {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.9);
+  z-index: 2000;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+#winnerModal.show { display: flex; }
+
+#winnerModal .modal-content {
+  background: linear-gradient(135deg, #1a5c1a 0%, #0e3a0e 100%);
+  border: 4px solid #FFE600;
+  padding: 40px 24px;
+  border-radius: 12px;
+  text-align: center;
+  width: 100%;
+  max-width: 480px;
+  box-shadow: 0 8px 32px rgba(255,230,0,0.3);
+}
+
+#winnerModal h2 {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 32px;
+  font-weight: 900;
+  color: #FFE600;
+  margin-bottom: 16px;
+  text-shadow: 0 2px 8px rgba(255,230,0,0.4);
+}
+
+#winnerModal p {
+  font-size: 18px;
+  color: #ccc;
+  margin-bottom: 24px;
+  line-height: 1.5;
+}
+
+#winnerModal button {
+  background: #FFE600;
+  color: #000;
+  border: none;
+  padding: 12px 40px;
+  font-size: 16px;
+  font-weight: 700;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+#winnerModal button:hover {
+  background: #FFA500;
+  transform: scale(1.05);
+  box-shadow: 0 4px 16px rgba(255,165,0,0.4);
+}
+
+/* -- Flash animation for viewer -- */
+@keyframes flash {
+  0%, 100% { background-color: #FFE600; box-shadow: 0 0 10px rgba(255, 230, 0, 0.3); }
+  50% { background-color: #FFA500; box-shadow: 0 0 20px rgba(255, 165, 0, 0.6); }
+}
+
+.flash {
+  animation: flash 0.1s ease-in-out !important;
+}
+
+.flash-strong {
+  animation: flash 0.2s ease-in-out 0s 3 !important;
+}
+

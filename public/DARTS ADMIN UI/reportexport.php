@@ -9,24 +9,47 @@ if (!$match_id) {
     die('match_id required');
 }
 
-// Fetch data (same as get_match.php)
-$match = $conn->query("SELECT * FROM matches WHERE id=$match_id")->fetch_assoc();
-if (!$match) die('Match not found');
+// Detect darts_ prefixed tables
+$prefix = '';
+$r = $conn->query("SHOW TABLES LIKE 'darts_matches'");
+if ($r && $r->num_rows) $prefix = 'darts_';
+$matchesTable = $prefix . 'matches';
+$playersTable = $prefix . 'players';
+$legsTable = $prefix . 'legs';
+$throwsTable = $prefix . 'throws';
+$summaryTable = $prefix . 'match_summary';
 
-$summary = $conn->query("SELECT * FROM match_summary WHERE match_id=$match_id")->fetch_assoc();
+// Fetch data (same as get_match.php)
+$match = $conn->query("SELECT * FROM `{$matchesTable}` WHERE id=$match_id")->fetch_assoc();
+if (!$match) die('Match not found');
+$summary = $conn->query("SELECT * FROM `{$summaryTable}` WHERE match_id=$match_id")->fetch_assoc();
 
 $players = [];
-$pres = $conn->query("SELECT * FROM players WHERE match_id=$match_id ORDER BY player_number");
+$pres = $conn->query("SELECT * FROM `{$playersTable}` WHERE match_id=$match_id ORDER BY player_number");
 while ($r = $pres->fetch_assoc()) $players[$r['id']] = $r;
-
-$legs_res = $conn->query("SELECT * FROM legs WHERE match_id=$match_id ORDER BY leg_number");
+$legs_res = $conn->query("SELECT * FROM `{$legsTable}` WHERE match_id=$match_id ORDER BY leg_number");
 $legs = [];
 while ($leg = $legs_res->fetch_assoc()) {
     $lid = $leg['id'];
-    $tres = $conn->query("SELECT * FROM throws WHERE leg_id=$lid ORDER BY player_id, throw_number");
-    $tbp = [];
-    while ($t = $tres->fetch_assoc()) $tbp[$t['player_id']][] = $t;
-    $leg['throws'] = $tbp;
+  $tres = $conn->query("SELECT * FROM `{$throwsTable}` WHERE leg_id=$lid ORDER BY player_id, throw_number");
+  $tbp = [];
+  while ($t = $tres->fetch_assoc()) $tbp[$t['player_id']][] = $t;
+  // ensure throws included for players with no throws
+  $throws_full = [];
+  foreach ($players as $pid => $pinfo) {
+    $throws_full[$pid] = $tbp[$pid] ?? [];
+  }
+  $leg['throws'] = $throws_full;
+  // compute per-player avg for this leg (exclude busts)
+  $leg_avg = [];
+  foreach ($throws_full as $pid => $tarr) {
+    $sum = 0; $count = 0;
+    foreach ($tarr as $tt) {
+      if (empty($tt['is_bust'])) { $sum += intval($tt['throw_value']); $count++; }
+    }
+    $leg_avg[$pid] = $count > 0 ? round($sum / $count, 1) : 0;
+  }
+  $leg['avg_per_player'] = $leg_avg;
     $legs[] = $leg;
 }
 
@@ -56,6 +79,18 @@ $sorted_players = array_values($players);
 usort($sorted_players, fn($a,$b) => ($legs_won[$b['id']] ?? 0) <=> ($legs_won[$a['id']] ?? 0));
 
 $date = date('Y-m-d H:i', strtotime($match['created_at']));
+
+// Determine match winner by legs_to_win threshold if present
+$overallWinner = $match['winner_name'] ?? null;
+$legsToWin = intval($match['legs_to_win'] ?? 0);
+if (!$overallWinner && $legsToWin > 0) {
+  foreach ($legs_won as $pid => $count) {
+    if ($count >= $legsToWin && isset($players[$pid])) {
+      $overallWinner = $players[$pid]['player_name'];
+      break;
+    }
+  }
+}
 
 // Build HTML report
 function buildReportHTML($match, $summary, $players, $legs, $legs_won, $throw_totals, $throw_counts, $sorted_players, $date, $isPrint = false) {
@@ -134,8 +169,10 @@ function buildReportHTML($match, $summary, $players, $legs, $legs_won, $throw_to
     <?php foreach ($players as $pid => $p):
       $ts = $leg['throws'][$pid] ?? [];
       $vals = array_map(fn($t) => $t['is_bust'] ? '<span style="color:#e55">BUST('.$t['throw_value'].')</span>' : $t['throw_value'], $ts);
+      $avg = $leg['avg_per_player'][$pid] ?? 0;
+      $displayAvg = $avg > 0 ? $avg : '—';
     ?>
-    <td><?= implode(', ', $vals) ?: '—' ?></td>
+    <td><?= (count($vals) ? implode(', ', $vals) . ' (avg ' . htmlspecialchars((string)$displayAvg) . ')' : '—') ?></td>
     <?php endforeach; ?>
   </tr>
   <?php endforeach; ?>
@@ -164,23 +201,51 @@ function buildReportHTML($match, $summary, $players, $legs, $legs_won, $throw_to
 }
 
 if ($format === 'excel') {
-    header('Content-Type: text/tab-separated-values');
+    // Output an HTML table which Excel will open; add pink header and borders
+    header('Content-Type: application/vnd.ms-excel; charset=UTF-8');
     header('Content-Disposition: attachment; filename="match_' . $match_id . '_report.xls"');
-    echo "MATCH OVERVIEW\n";
-    echo "Game Type\tLegs to Win\tMode\tDate\tWinner\n";
-    echo "{$match['game_type']}\t{$match['legs_to_win']}\t{$match['mode']}\t{$date}\t" . ($match['winner_name'] ?? '') . "\n\n";
-    echo "PLAYER ROSTER\n";
-    echo "Player #\tName\tTeam\n";
+    echo "\xEF\xBB\xBF"; // BOM
+    // Build a simple HTML with inline styles suitable for Excel
+    $excelHtml = '<!DOCTYPE html><html><head><meta charset="utf-8"><style>';
+    $excelHtml .= 'table{border-collapse:collapse;font-family:Arial,Helvetica,sans-serif}';
+    $excelHtml .= 'th,td{border:1px solid #d99fbf;padding:6px;text-align:left}';
+    $excelHtml .= 'th{background:#ffd6ec;color:#6a0059;font-weight:700}';
+    $excelHtml .= '</style></head><body>';
+    $excelHtml .= '<h2>Darts Match Report</h2>';
+    // Match overview
+    $excelHtml .= '<table><tr><th>Game Type</th><th>Legs to Win</th><th>Mode</th><th>Date</th><th>Winner</th></tr>';
+    $excelHtml .= '<tr><td>' . htmlspecialchars($match['game_type']) . '</td><td>' . intval($match['legs_to_win']) . '</td><td>' . htmlspecialchars($match['mode']) . '</td><td>' . htmlspecialchars($date) . '</td><td>' . htmlspecialchars($match['winner_name'] ?? '') . '</td></tr></table>';
+    // Player roster
+    $excelHtml .= '<h3>Player Roster</h3><table><tr><th>Player #</th><th>Name</th><th>Team</th></tr>';
     foreach ($players as $p) {
-        echo "{$p['player_number']}\t{$p['player_name']}\t" . ($p['team_name'] ?? '') . "\n";
+        $excelHtml .= '<tr><td>' . intval($p['player_number']) . '</td><td>' . htmlspecialchars($p['player_name']) . '</td><td>' . htmlspecialchars($p['team_name'] ?? '') . '</td></tr>';
     }
-    echo "\nFINAL STANDINGS\n";
-    echo "Rank\tPlayer\tTeam\tLegs Won\tAvg Throw/Leg\n";
+    $excelHtml .= '</table>';
+    // Leg-by-leg
+    $excelHtml .= '<h3>Leg-by-Leg</h3><table><tr><th>Leg #</th><th>Winner</th>';
+    foreach ($players as $p) { $excelHtml .= '<th>' . htmlspecialchars($p['player_name']) . ' Throws</th>'; }
+    $excelHtml .= '</tr>';
+    foreach ($legs as $leg) {
+        $excelHtml .= '<tr><td>' . intval($leg['leg_number']) . '</td><td>' . htmlspecialchars($players[$leg['winner_player_id']]['player_name'] ?? '') . '</td>';
+      foreach ($players as $pid => $p) {
+        $ts = $leg['throws'][$pid] ?? [];
+        $vals = array_map(fn($t) => empty($t['is_bust']) ? intval($t['throw_value']) : 'BUST(' . intval($t['throw_value']) . ')', $ts);
+        $avg = $leg['avg_per_player'][$pid] ?? 0;
+        $displayAvg = $avg > 0 ? $avg : '—';
+        $excelHtml .= '<td>' . htmlspecialchars(implode(', ', $vals)) . (count($vals) ? ' (avg ' . htmlspecialchars((string)$displayAvg) . ')' : '') . '</td>';
+      }
+        $excelHtml .= '</tr>';
+    }
+    $excelHtml .= '</table>';
+    // Final standings
+    $excelHtml .= '<h3>Final Standings</h3><table><tr><th>Rank</th><th>Player</th><th>Team</th><th>Legs Won</th><th>Avg Throw/Leg</th></tr>';
     foreach ($sorted_players as $i => $p) {
         $pid = $p['id'];
         $avg = ($throw_counts[$pid] ?? 0) > 0 ? round($throw_totals[$pid] / $throw_counts[$pid], 1) : 0;
-        echo ($i+1) . "\t{$p['player_name']}\t" . ($p['team_name'] ?? '') . "\t" . ($legs_won[$pid] ?? 0) . "\t$avg\n";
+        $excelHtml .= '<tr><td>' . ($i+1) . '</td><td>' . htmlspecialchars($p['player_name']) . '</td><td>' . htmlspecialchars($p['team_name'] ?? '') . '</td><td>' . intval($legs_won[$pid] ?? 0) . '</td><td>' . $avg . '</td></tr>';
     }
+    $excelHtml .= '</table></body></html>';
+    echo $excelHtml;
 } elseif ($format === 'print') {
     echo buildReportHTML($match, $summary, $players, $legs, $legs_won, $throw_totals, $throw_counts, $sorted_players, $date, true);
 } else {

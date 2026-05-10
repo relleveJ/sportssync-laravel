@@ -11,7 +11,12 @@
 <!-- NAV -->
 <nav>
   <div class="nav-score-left">
-    <span class="nav-live-pill">&#9679; LIVE</span>
+    <a href="javascript:history.back()" class="back-btn" title="Go Back">
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" width="18" height="18">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+      </svg>
+      <span class="back-btn-text">BACK</span>
+    </a>
   </div>
   <div class="nav-center">
     <div class="nav-score-pill team-a">
@@ -39,14 +44,13 @@
       <span class="nav-compact-pill"><span class="nav-compact-team" id="compactLabelB">B</span><span class="nav-compact-score" id="compactScoreB">0</span></span>
     </div>
     <span class="nav-viewer-badge">&#128065; VIEWER VIEW</span>
-    <a href="../landingpage.php" style="color:#FFD700;margin-left:12px;text-decoration:none">← Back to sports</a>
   </div>
 </nav>
 
 <!-- COMMITTEE BAR -->
-<div class="committee-bar">
-  <span class="committee-label">Committee / Official:</span>
-  <span class="committee-value" id="committeeValue">—</span>
+<div class="bbCommitteeBar">
+  <span class="bbCommitteeLabel">Committee / Official:</span>
+  <span class="bbCommitteeValue" id="bbCommitteeValue">—</span>
 </div>
 
 <!-- MAIN GRID -->
@@ -62,12 +66,12 @@
     <div class="team-stats-bar" id="tsbA">
       <div class="tsb-item">
         <span class="tsb-label">Team Foul</span>
-        <div class="tsb-box"><span class="tsb-num" id="tsbA_foul">5</span></div>
+        <div class="tsb-box"><span class="tsb-num" id="bbTsbAFoul">5</span></div>
       </div>
       <div class="tsb-sep"></div>
       <div class="tsb-item">
         <span class="tsb-label">Timeout</span>
-        <div class="tsb-box"><span class="tsb-num" id="tsbA_timeout">3</span></div>
+        <div class="tsb-box"><span class="tsb-num" id="bbTsbATimeout">3</span></div>
       </div>
       <div class="tsb-sep"></div>
       <div class="tsb-item">
@@ -100,12 +104,12 @@
     <div class="team-stats-bar" id="tsbB">
       <div class="tsb-item">
         <span class="tsb-label">Team Foul</span>
-        <div class="tsb-box"><span class="tsb-num" id="tsbB_foul">5</span></div>
+        <div class="tsb-box"><span class="tsb-num" id="bbTsbBFoul">5</span></div>
       </div>
       <div class="tsb-sep"></div>
       <div class="tsb-item">
         <span class="tsb-label">Timeout</span>
-        <div class="tsb-box"><span class="tsb-num" id="tsbB_timeout">3</span></div>
+        <div class="tsb-box"><span class="tsb-num" id="bbTsbBTimeout">3</span></div>
       </div>
       <div class="tsb-sep"></div>
       <div class="tsb-item">

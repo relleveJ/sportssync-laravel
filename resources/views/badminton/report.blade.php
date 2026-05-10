@@ -25,7 +25,7 @@
 <body>
 
 <div class="export-bar">
-  <a class="btn-export" href="{{ url('admin/badminton') }}" style="background:transparent;color:#FFE600;border:0;font-family:'Oswald',sans-serif;font-weight:700;letter-spacing:1px;text-decoration:none;margin-right:auto">&#8592; Back to Admin</a>
+  <a class="btn-export" href="{{ url('/') }}" style="background:transparent;color:#FFE600;border:0;font-family:'Oswald',sans-serif;font-weight:700;letter-spacing:1px;text-decoration:none;margin-right:auto">&#8592; Back to Dashboard</a>
   <button class="btn-export btn-excel" onclick="exportExcel()">&#11015; Export Excel</button>
   <button class="btn-export btn-print" onclick="window.print()">&#128438; Print PDF</button>
   <span class="bar-title">&#127944; Badminton Report — Match #{{ $matchId }}</span>

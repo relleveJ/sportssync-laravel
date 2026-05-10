@@ -43,8 +43,46 @@ nav {
   gap: 12px;
   min-width: 0;
 }
-.nav-score-left { display: flex; align-items: center; justify-content: flex-start; min-width: 0; }
+.nav-score-left { display: flex; align-items: center; justify-content: flex-start; min-width: 0; gap: 10px; }
 .nav-live-pill { font-family: 'Oswald', sans-serif; font-size: 11px; font-weight: 700; letter-spacing: 1.5px; color: #fff; background: #c0392b; padding: 4px 10px; border-radius: 4px; animation: blink 1.6s ease-in-out infinite; white-space: nowrap; }
+
+/* ===== BACK BUTTON ===== */
+.back-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: #111;
+  color: var(--yellow-accent);
+  padding: 0 14px;
+  height: 42px;
+  border-radius: 8px;
+  text-decoration: none;
+  font-family: 'Oswald', sans-serif;
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: 1px;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.back-btn:hover {
+  background: #222;
+  box-shadow: 0 0 12px rgba(245,197,24,0.25);
+}
+
+.back-btn:active {
+  transform: scale(0.96);
+}
+
+.back-btn svg {
+  flex-shrink: 0;
+}
+
+.back-btn-text {
+  display: inline;
+}
 .nav-center { display: flex; flex-direction: row; align-items: center; justify-content: center; gap: 10px; min-width: 0; overflow: hidden; }
 .nav-title-stack { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0; flex-shrink: 0; }
 .nav-score-right { display: flex; align-items: center; gap: 8px; justify-content: flex-end; flex-shrink: 0; min-width: 0; }
@@ -148,14 +186,20 @@ nav {
    RESPONSIVE
 ══════════════════════════════════════ */
 @media (max-width: 900px) {
-  nav { height: 56px; padding: 0 12px; }
+  nav { height: auto; min-height: 56px; padding: 8px 12px; flex-wrap: wrap; }
   .nav-title { font-size: 15px; }
   .nav-subtitle { display: none; }
   .main-grid { grid-template-columns: 1fr; }
   .right-panel { min-height: auto; padding: 12px; }
+  .back-btn { height: 38px; font-size: 12px; padding: 0 12px; }
+}
+@media (max-width: 600px) {
+  .back-btn-text { display: none; }
+  .nav-score-left { gap: 6px; }
 }
 @media (max-width: 480px) {
   .nav-title { font-size: 13px; }
   .nav-score-num { font-size: 18px; }
   .td-name { min-width: 90px; }
+  .back-btn { height: 36px; padding: 0 10px; }
 }

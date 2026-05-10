@@ -1,0 +1,23 @@
+{
+  "gameTimer": {
+    "duration": 600,
+    "remaining": 500,
+    "running": true,
+    "ts": 1712345678000
+  },
+  "shotClock": {
+    "preset": 24,
+    "remaining": 14,
+    "running": true,
+    "ts": 1712345685000
+  },
+  "quarter": 1,
+  "scores": {
+    "teamA": 0,
+    "teamB": 0
+  },
+  "_meta": {
+    "last_user_id": 12,
+    "last_role": "admin"
+  }
+}

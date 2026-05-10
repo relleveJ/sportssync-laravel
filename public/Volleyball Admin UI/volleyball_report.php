@@ -4,8 +4,8 @@
 // Usage: volleyball_report.php?match_id=N
 // ============================================================
 
-require_once __DIR__ . '/auth.php';
-require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/../auth.php';
+require_once __DIR__ . '/../db.php';
 
 $user    = requireRole('viewer');
 $matchId = isset($_GET['match_id']) ? (int)$_GET['match_id'] : 0;
@@ -42,6 +42,34 @@ $allPlayers = $stmtP->fetchAll();
 $playersA = array_filter($allPlayers, fn($p) => $p['team'] === 'A');
 $playersB = array_filter($allPlayers, fn($p) => $p['team'] === 'B');
 
+// If match row has no MVP stored, compute it here so every game shows an MVP
+if (empty($match['mvp'])) {
+  $mvpName = '';
+  $mvpRubric = '';
+  $mvpScore = -INF;
+  foreach (array_merge($playersA, $playersB) as $p) {
+    $pts   = isset($p['pts']) ? (int)$p['pts'] : 0;
+    $spike = isset($p['spike']) ? (int)$p['spike'] : 0;
+    $ace   = isset($p['ace']) ? (int)$p['ace'] : 0;
+    $exSet = isset($p['ex_set']) ? (int)$p['ex_set'] : (isset($p['exSet']) ? (int)$p['exSet'] : 0);
+    $exDig = isset($p['ex_dig']) ? (int)$p['ex_dig'] : (isset($p['exDig']) ? (int)$p['exDig'] : 0);
+    $blk   = isset($p['blk']) ? (int)$p['blk'] : 0;
+    $score = ($pts * 2) + ($spike * 1.2) + ($ace * 1.5) + ($exSet * 1) + ($exDig * 1) + ($blk * 1.3);
+    if ($score > $mvpScore) {
+      $mvpScore = $score;
+      $no = isset($p['jersey_no']) && $p['jersey_no'] !== '' ? ('#' . $p['jersey_no'] . ' ') : '';
+      $name = isset($p['player_name']) ? $p['player_name'] : '';
+      $teamLetter = isset($p['team']) ? $p['team'] : '';
+      $mvpName = trim($no . $name) . ($teamLetter ? ' (' . $teamLetter . ')' : '');
+      $mvpRubric = sprintf('pts:%d spike:%d ace:%d ex_set:%d ex_dig:%d blk:%d score:%.2f', $pts, $spike, $ace, $exSet, $exDig, $blk, $score);
+    }
+  }
+  if ($mvpName !== '') {
+    $match['mvp'] = $mvpName;
+    $match['mvp_rubric'] = $mvpRubric;
+  }
+}
+
 function h(string $s): string { return htmlspecialchars($s, ENT_QUOTES, 'UTF-8'); }
 
 $exportedAt = date('F j, Y  •  g:i A', strtotime($match['created_at']));
@@ -65,7 +93,9 @@ $jsonMatch = json_encode([
     'team_a_score'=> $match['team_a_score'],
     'team_b_score'=> $match['team_b_score'],
     'current_set' => $currentSet,
-    'match_result'=> $match['match_result'],
+  'match_result'=> $match['match_result'],
+  'mvp'         => $match['mvp'] ?? '',
+  'mvp_rubric'  => $match['mvp_rubric'] ?? '',
     'players_a'   => array_values($playersA),
     'players_b'   => array_values($playersB),
 ], JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP);
@@ -127,6 +157,8 @@ table.team-table tbody td:first-child,table.team-table tbody td:nth-child(2){tex
   <span class="bar-title">&#127944; Volleyball Report — Match #<?= $matchId ?></span>
   <button class="btn-export btn-excel" onclick="exportExcel()">&#11015; Export Excel</button>
   <button class="btn-export btn-print" onclick="window.print()">&#128438; Print PDF</button>
+  <button class="btn-export" style="background:#FFD700;color:#062a78;border:0;font-family:'Oswald',sans-serif;font-weight:700;letter-spacing:1px;cursor:pointer;margin-left:6px" onclick="newMatch()">➕ New Match</button>
+   <button class="btn-export" onclick="window.open('volleyball_matches_admin.php','_blank')">📚 Match History</button>
 </div>
 
 <div class="container">
@@ -167,6 +199,16 @@ table.team-table tbody td:first-child,table.team-table tbody td:nth-child(2){tex
     </div>
   </div>
 
+  <?php if (!empty($match['mvp']) || !empty($match['mvp_rubric'])): ?>
+  <div class="result-row">
+    <strong>MVP:</strong>
+    <span style="margin-left:8px;font-weight:800;color:#062a78"><?= h($match['mvp'] ?? '') ?: '&mdash;' ?></span>
+    <?php if (!empty($match['mvp_rubric'])): ?>
+      <div style="margin-top:8px;color:#333"> <strong>Rubric:</strong> <?= h($match['mvp_rubric']) ?></div>
+    <?php endif; ?>
+  </div>
+  <?php endif; ?>
+
   <div class="result-row">
     <strong>Overall Result:</strong>
     <span class="result-badge"><?= $result ?></span>
@@ -177,7 +219,7 @@ table.team-table tbody td:first-child,table.team-table tbody td:nth-child(2){tex
     <div class="tb-name"><?= $tName ?></div>
     <table class="team-table">
       <thead><tr>
-        <th>#</th><th>Name</th><th>PTS</th><th>SPIKE</th><th>ACE</th><th>EX SET</th><th>EX DIG</th>
+        <th>#</th><th>Name</th><th>PTS</th><th>SPIKE</th><th>ACE</th><th>EX SET</th><th>EX DIG</th><th>BLK</th>
       </tr></thead>
       <tbody>
         <?php foreach ($players as $pl): ?>
@@ -189,6 +231,7 @@ table.team-table tbody td:first-child,table.team-table tbody td:nth-child(2){tex
           <td><?= (int)$pl['ace'] ?></td>
           <td><?= (int)$pl['ex_set'] ?></td>
           <td><?= (int)$pl['ex_dig'] ?></td>
+          <td><?= (int)($pl['blk'] ?? 0) ?></td>
         </tr>
         <?php endforeach; ?>
         <?php if (empty($players)): ?>
@@ -203,6 +246,7 @@ table.team-table tbody td:first-child,table.team-table tbody td:nth-child(2){tex
         <td><?= sumCol(iterator_to_array($players), 'ace') ?></td>
         <td><?= sumCol(iterator_to_array($players), 'ex_set') ?></td>
         <td><?= sumCol(iterator_to_array($players), 'ex_dig') ?></td>
+        <td><?= sumCol(iterator_to_array($players), 'blk') ?></td>
       </tr></tfoot>
       <?php endif; ?>
     </table>
@@ -237,6 +281,8 @@ window.exportExcel = function () {
   rows.push(['Match ID', MATCH_DATA.match_id]);
   rows.push(['Date / Time', MATCH_DATA.saved_at]);
   rows.push(['Committee / Official', MATCH_DATA.committee || '—']);
+  rows.push(['MVP', MATCH_DATA.mvp || '—']);
+  rows.push(['MVP Rubric', MATCH_DATA.mvp_rubric || '—']);
   rows.push(['Current Set', MATCH_DATA.current_set]);
   rows.push(['Status', MATCH_DATA.match_result]);
   rows.push(['Team A', MATCH_DATA.team_a_name]);
@@ -247,9 +293,9 @@ window.exportExcel = function () {
   rows.push([]);
 
   rows.push(['Players']);
-  rows.push(['Team','#','Name','PTS','SPIKE','ACE','EX SET','EX DIG']);
-  (MATCH_DATA.players_a || []).forEach(p => rows.push([MATCH_DATA.team_a_name, p.jersey_no||'', p.player_name||'—', p.pts||0, p.spike||0, p.ace||0, p.ex_set||0, p.ex_dig||0]));
-  (MATCH_DATA.players_b || []).forEach(p => rows.push([MATCH_DATA.team_b_name, p.jersey_no||'', p.player_name||'—', p.pts||0, p.spike||0, p.ace||0, p.ex_set||0, p.ex_dig||0]));
+  rows.push(['Team','#','Name','PTS','SPIKE','ACE','EX SET','EX DIG','BLK']);
+  (MATCH_DATA.players_a || []).forEach(p => rows.push([MATCH_DATA.team_a_name, p.jersey_no||'', p.player_name||'—', p.pts||0, p.spike||0, p.ace||0, p.ex_set||0, p.ex_dig||0, p.blk||0]));
+  (MATCH_DATA.players_b || []).forEach(p => rows.push([MATCH_DATA.team_b_name, p.jersey_no||'', p.player_name||'—', p.pts||0, p.spike||0, p.ace||0, p.ex_set||0, p.ex_dig||0, p.blk||0]));
   rows.push([]);
   rows.push(['Game Result', MATCH_DATA.match_result]);
 
@@ -283,6 +329,26 @@ window.exportExcel = function () {
   if(typeof XLSX.writeFile==='function'){try{XLSX.writeFile(wb,filename);return;}catch(_){}}
   alert('Excel export not supported in this browser build.');
 };
+</script>
+<script>
+(function(){
+  try {
+    if (sessionStorage.getItem('disableBackAfterSave_volleyball') === '1') {
+      try { sessionStorage.removeItem('disableBackAfterSave_volleyball'); } catch(e){}
+      try { localStorage.removeItem('volleyballMatchState'); } catch(e){}
+      try { localStorage.removeItem('volleyballAdminState'); } catch(e){}
+      try { sessionStorage.removeItem('volleyball_match_id'); } catch(e){}
+      history.pushState(null, null, location.href);
+      window.addEventListener('popstate', function(){ history.pushState(null, null, location.href); });
+    }
+  } catch(e){}
+})();
+function newMatch(){
+  try { localStorage.removeItem('volleyballMatchState'); } catch(e){}
+  try { localStorage.removeItem('volleyballAdminState'); } catch(e){}
+  try { sessionStorage.removeItem('volleyball_match_id'); } catch(e){}
+  window.location.href = 'volleyball_admin.php';
+}
 </script>
 </body>
 </html>

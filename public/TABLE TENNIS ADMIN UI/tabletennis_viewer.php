@@ -1,3 +1,16 @@
+<?php
+// ── SportSync Guards ──────────────────────────────────────────
+$_ss_db_loaded = false;
+try {
+    $__dbf = file_exists(__DIR__.'/db.php') ? __DIR__.'/db.php' : (file_exists(__DIR__.'/../db.php') ? __DIR__.'/../db.php' : null);
+    if ($__dbf) { require_once $__dbf; $_ss_db_loaded = true; }
+} catch (Throwable $e) {}
+if ($_ss_db_loaded && !empty($pdo)) {
+    $__sg=null;foreach([__DIR__,__DIR__.'/..',__DIR__.'/../..'] as $__d){if(file_exists($__d.'/system_guard.php')){$__sg=$__d.'/system_guard.php';break;}}if($__sg) require_once $__sg;
+    ss_check_maintenance($pdo);         // viewer: full block
+    ss_check_sport($pdo, 'Table Tennis');
+}
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -9,9 +22,16 @@
 <body>
 
 <nav class="top-nav">
-  <div class="logo">🏓 <span style="color:#111">SPORTSSYNC</span></div>
+  <a href="javascript:history.back()" class="back-btn" title="Go Back">
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" width="18" height="18">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+    </svg>
+    <span class="back-btn-text">BACK</span>
+  </a>
   <div class="nav-title">TABLE TENNIS MATCH — VIEWER</div>
-  <div class="nav-right">👁 LIVE VIEW <a href="../landingpage.php" style="color:#FFD700;margin-left:12px;text-decoration:none">← Back to sports</a></div>
+  <div class="nav-right">
+    <span class="nav-live-badge">👁 LIVE VIEW</span>
+  </div>
 </nav>
 
 <div class="match-type-bar" id="matchTypeBar">
@@ -27,7 +47,7 @@
     <div class="team-header team-header-a">
       <span id="teamAName">TEAM A</span>
     </div>
-    <div class="player-display" id="playersA"></div>
+    <div class="player-display" id="tt-playersA"></div>
 
     <div class="section-label">Game Points</div>
     <div class="score-display">
@@ -90,7 +110,7 @@
     <div class="team-header team-header-b">
       <span id="teamBName">TEAM B</span>
     </div>
-    <div class="player-display" id="playersB"></div>
+    <div class="player-display" id="tt-playersB"></div>
 
     <div class="section-label">Game Points</div>
     <div class="score-display">
@@ -138,6 +158,15 @@
   <div class="status-item">
     <span class="si-label">Serving</span>
     <span class="si-value" id="statusServing">TEAM A</span>
+  </div>
+</div>
+
+<!-- ✅ SSOT WINNER MODAL — Table Tennis Only -->
+<div id="winnerModal" class="modal" style="display: none;">
+  <div class="modal-content">
+    <h2 id="winnerModalTitle"></h2>
+    <p id="winnerModalMsg"></p>
+    <button onclick="closeWinnerModal()">OK</button>
   </div>
 </div>
 

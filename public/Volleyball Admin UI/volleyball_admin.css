@@ -50,14 +50,14 @@ nav {
   min-width: 0;
 }
 .nav-left-actions { display: flex; gap: 8px; align-items: center; }
-.nav-left-actions .btn-reset {
+.nav-left-actions .volleyball-btn-reset {
   border: none; padding: 7px 12px;
   font-family: 'Oswald', sans-serif; font-size: 12px; font-weight: 700;
   letter-spacing: 0.8px; border-radius: 5px; cursor: pointer;
   text-transform: uppercase; transition: transform 0.08s, filter 0.12s, background 0.12s;
   background: #e74c3c; color: #fff;
 }
-.nav-left-actions .btn-reset:hover { filter: brightness(1.06); transform: translateY(-1px); }
+.nav-left-actions .volleyball-btn-reset:hover { filter: brightness(1.06); transform: translateY(-1px); }
 
 .nav-center {
   display: flex; flex-direction: row; align-items: center;
@@ -102,6 +102,24 @@ nav {
   color: var(--nav-yellow); line-height: 1; letter-spacing: -1px;
   transition: transform 0.12s ease; display: block;
 }
+.score-controls { display: flex; align-items: center; gap: 8px; }
+.score-buttons { display: flex; flex-direction: column; gap: 2px; }
+.score-btn {
+  background: #333;
+  color: #fff;
+  border: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background 0.2s;
+}
+.score-btn:hover { background: #555; }
+.score-btn.plus { background: #27ae60; }
+.score-btn.minus { background: #c0392b; }
+.score-btn.plus:hover { background: #2ecc71; }
+.score-btn.minus:hover { background: #e74c3c; }
 .nav-live-badge {
   display: inline-flex; align-items: center; gap: 3px; background: #c0392b;
   color: #fff; font-family: 'Oswald', sans-serif; font-size: 7px; font-weight: 700;
@@ -120,19 +138,20 @@ nav {
   text-transform: uppercase; transition: background 0.15s, color 0.15s; white-space: nowrap;
 }
 .btn-save:hover { background: #222; color: #fff; }
-
-/* Back button (nav) */
-.back-btn {
-  display: inline-block;
-  background: #111;
-  color: var(--nav-yellow);
-  padding: 7px 12px;
-  border-radius: 6px;
-  text-decoration: none;
-  font-weight: 800;
-  margin-left: 8px;
-  border: 1px solid rgba(245,197,24,0.08);
+.btn-new {
+  background: #27ae60; color: #fff; border: none; padding: 7px 14px;
+  font-family: 'Oswald', sans-serif; font-size: 12px; font-weight: 600;
+  letter-spacing: 1.5px; cursor: pointer; border-radius: 4px;
+  text-transform: uppercase; transition: background 0.15s, color 0.15s; white-space: nowrap;
 }
+.btn-new:hover { background: #2ecc71; }
+.btn-matches {
+  background: #111; color: var(--nav-yellow); border: none; padding: 7px 14px;
+  font-family: 'Oswald', sans-serif; font-size: 12px; font-weight: 600;
+  letter-spacing: 1.5px; cursor: pointer; border-radius: 4px;
+  text-transform: uppercase; transition: background 0.15s, color 0.15s; white-space: nowrap;
+}
+.btn-matches:hover { background: #222; color: #fff; }
 .btn-view-toggle {
   background: #222; color: #aaa; border: 1px solid #444; padding: 7px 14px;
   font-family: 'Oswald', sans-serif; font-size: 12px; font-weight: 600;

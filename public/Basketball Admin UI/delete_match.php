@@ -57,7 +57,7 @@ try {
             $stOwner->execute([':id' => $match_id]);
             $row = $stOwner->fetch();
             $owner = $row ? ($row['owner_user_id'] ?? null) : null;
-            if ($owner && $owner != $user['id'] && ($user['role'] ?? '') !== 'admin') {
+            if ($owner && $owner != $user['id'] && !in_array(($user['role'] ?? ''), ['admin', 'superadmin'], true)) {
                 http_response_code(403);
                 echo json_encode([ 'success' => false, 'error' => 'Permission denied' ]);
                 exit;

@@ -2,7 +2,13 @@
 require_once 'db_config.php';
 header('Content-Type: application/json; charset=utf-8');
 
-$data = json_decode(file_get_contents('php://input'), true);
+// Support legacy wrapper: if Laravel wrapper set global legacy input, use it
+$raw = $GLOBALS['__LEGACY_INPUT_JSON'] ?? null;
+if ($raw !== null) {
+	$data = json_decode($raw, true);
+} else {
+	$data = json_decode(file_get_contents('php://input'), true);
+}
 if (!$data) { echo json_encode(['success' => false, 'message' => 'Invalid JSON']); exit; }
 
 $match_id = isset($data['match_id']) ? intval($data['match_id']) : 0;
@@ -23,6 +29,40 @@ $stmt = $mysqli->prepare("INSERT INTO table_tennis_match_summary (match_id, tota
 $stmt->bind_param('iiiiss', $match_id, $total_sets_played, $team_a_sets_won, $team_b_sets_won, $winner_team, $winner_name);
 if (!$stmt->execute()) { http_response_code(500); echo json_encode(['success' => false, 'message' => $stmt->error]); exit; }
 $stmt->close();
+// Notify WS relay about declared winner so clients update (include team names when possible)
+try {
+	// attempt to read team names from match row (safe query for existing columns)
+	$teamA = null; $teamB = null;
+	try {
+		$mstmt = $mysqli->prepare('SELECT team_a_name, team_b_name FROM table_tennis_matches WHERE id = ? LIMIT 1');
+		if ($mstmt) {
+			$mstmt->bind_param('i', $match_id);
+			$mstmt->execute();
+			$res = $mstmt->get_result();
+			$row = $res ? $res->fetch_assoc() : null;
+			if ($row) { $teamA = $row['team_a_name'] ?? null; $teamB = $row['team_b_name'] ?? null; }
+			$mstmt->close();
+		}
+	} catch (Throwable $_) { /* ignore */ }
+
+	$wsRelay = getenv('WS_RELAY_URL') ?: 'http://127.0.0.1:3000/emit';
+	$wsToken = getenv('WS_TOKEN') ?: null;
+	$payload = ['match_id' => $match_id, 'winner_name' => $winner_name];
+	if ($teamA) $payload['team_a_name'] = $teamA;
+	if ($teamB) $payload['team_b_name'] = $teamB;
+	$emit = json_encode(['type' => 'new_match', 'match_id' => $match_id, 'sport' => 'tabletennis', 'payload' => $payload]);
+	$ch = curl_init($wsRelay);
+	$headers = ['Content-Type: application/json'];
+	if ($wsToken) $headers[] = 'X-WS-Token: ' . $wsToken;
+	curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+	curl_setopt($ch, CURLOPT_POST, true);
+	curl_setopt($ch, CURLOPT_POSTFIELDS, $emit);
+	curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+	curl_setopt($ch, CURLOPT_CONNECTTIMEOUT_MS, 200);
+	curl_setopt($ch, CURLOPT_TIMEOUT_MS, 500);
+	@curl_exec($ch);
+	@curl_close($ch);
+} catch (Throwable $_) { /* non-fatal */ }
 
 echo json_encode(['success' => true, 'message' => "$winner_name declared as winner."]); 
 exit;

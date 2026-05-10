@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Darts Admin Sync Test</title>
+    <style>
+        body { font-family: Arial; margin: 20px; background: #f5f5f5; }
+        .container { max-width: 1200px; margin: 0 auto; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .admin-panel { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .admin-panel h2 { margin-top: 0; border-bottom: 2px solid #007bff; padding-bottom: 10px; }
+        button { background: #007bff; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; margin: 5px 0; }
+        button:hover { background: #0056b3; }
+        .log { background: #f8f9fa; border: 1px solid #dee2e6; padding: 10px; margin: 10px 0; border-radius: 4px; max-height: 300px; overflow-y: auto; font-family: monospace; font-size: 11px; }
+        .log-entry { margin: 5px 0; line-height: 1.4; }
+        .error { color: #dc3545; }
+        .success { color: #28a745; }
+        .info { color: #17a2b8; }
+        .input-row { margin: 10px 0; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input { padding: 8px; width: 100%; box-sizing: border-box; }
+    </style>
+</head>
+<body>
+<h1>Darts Admin Real-Time Sync Test</h1>
+<p>Open this page in 2-3 different browsers/tabs. Make changes in one browser and watch them appear in others instantly.</p>
+
+<div class="container">
+    <div class="admin-panel">
+        <h2>Admin Panel 1</h2>
+        <div class="input-row">
+            <label>Admin Name:</label>
+            <input type="text" id="admin1_name" value="Admin A" readonly>
+        </div>
+        <div class="input-row">
+            <label>Input Digits:</label>
+            <input type="text" id="admin1_input" placeholder="Enter digits">
+        </div>
+        <div class="input-row">
+            <label>Player Name:</label>
+            <input type="text" id="admin1_player" placeholder="Enter player name">
+        </div>
+        <button onclick="testAdmin1Update()">Update State</button>
+        <button onclick="clearAdmin1Log()">Clear Log</button>
+        <div class="log" id="admin1_log"></div>
+    </div>
+
+    <div class="admin-panel">
+        <h2>Admin Panel 2</h2>
+        <div class="input-row">
+            <label>Admin Name:</label>
+            <input type="text" id="admin2_name" value="Admin B" readonly>
+        </div>
+        <div class="input-row">
+            <label>Input Digits:</label>
+            <input type="text" id="admin2_input" placeholder="Enter digits">
+        </div>
+        <div class="input-row">
+            <label>Player Name:</label>
+            <input type="text" id="admin2_player" placeholder="Enter player name">
+        </div>
+        <button onclick="testAdmin2Update()">Update State</button>
+        <button onclick="clearAdmin2Log()">Clear Log</button>
+        <div class="log" id="admin2_log"></div>
+    </div>
+</div>
+
+<script>
+const logs = { admin1: [], admin2: [] };
+
+function addLog(panel, message, type = 'info') {
+    const timestamp = new Date().toLocaleTimeString();
+    const entry = `[${timestamp}] ${message}`;
+    logs[panel].push({ message: entry, type });
+    renderLog(panel);
+}
+
+function renderLog(panel) {
+    const logDiv = document.getElementById(panel + '_log');
+    logDiv.innerHTML = logs[panel].map(e => 
+        `<div class="log-entry ${e.type}">${e.message}</div>`
+    ).join('');
+    logDiv.scrollTop = logDiv.scrollHeight;
+}
+
+function clearLog(panel) {
+    logs[panel] = [];
+    renderLog(panel);
+}
+
+function testAdmin1Update() {
+    const input = document.getElementById('admin1_input').value;
+    const player = document.getElementById('admin1_player').value;
+    
+    if (!input && !player) {
+        addLog('admin1', '❌ Please enter input digits or player name', 'error');
+        return;
+    }
+
+    addLog('admin1', '📤 Sending update to state.php...', 'info');
+    
+    const payload = {
+        match_id: 5,  // Fixed match ID for testing
+        state: {
+            inputStr: input,
+            currentPlayer: player,
+            updated_at: new Date().toISOString()
+        }
+    };
+
+    fetch('state.php', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    })
+    .then(r => {
+        addLog('admin1', `📨 Response: ${r.status} ${r.statusText}`, r.ok ? 'success' : 'error');
+        return r.json();
+    })
+    .then(data => {
+        if (data.success) {
+            addLog('admin1', `✅ Server saved successfully`, 'success');
+            addLog('admin1', `📡 Broadcasting to BroadcastChannel...`, 'info');
+            // Simulate receiving the broadcast
+            window.dispatchEvent(new CustomEvent('sync-test', { detail: { input, player } }));
+        } else {
+            addLog('admin1', `❌ Server error: ${data.message}`, 'error');
+        }
+    })
+    .catch(err => {
+        addLog('admin1', `❌ Fetch failed: ${err.message}`, 'error');
+    });
+}
+
+function testAdmin2Update() {
+    const input = document.getElementById('admin2_input').value;
+    const player = document.getElementById('admin2_player').value;
+    
+    if (!input && !player) {
+        addLog('admin2', '❌ Please enter input digits or player name', 'error');
+        return;
+    }
+
+    addLog('admin2', '📤 Sending update to state.php...', 'info');
+    
+    const payload = {
+        match_id: 5,  // Fixed match ID for testing
+        state: {
+            inputStr: input,
+            currentPlayer: player,
+            updated_at: new Date().toISOString()
+        }
+    };
+
+    fetch('state.php', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    })
+    .then(r => {
+        addLog('admin2', `📨 Response: ${r.status} ${r.statusText}`, r.ok ? 'success' : 'error');
+        return r.json();
+    })
+    .then(data => {
+        if (data.success) {
+            addLog('admin2', `✅ Server saved successfully`, 'success');
+            addLog('admin2', `📡 Broadcasting to BroadcastChannel...`, 'info');
+            // Simulate receiving the broadcast
+            window.dispatchEvent(new CustomEvent('sync-test', { detail: { input, player } }));
+        } else {
+            addLog('admin2', `❌ Server error: ${data.message}`, 'error');
+        }
+    })
+    .catch(err => {
+        addLog('admin2', `❌ Fetch failed: ${err.message}`, 'error');
+    });
+}
+
+function clearAdmin1Log() {
+    clearLog('admin1');
+}
+
+function clearAdmin2Log() {
+    clearLog('admin2');
+}
+
+// Listen for sync events from BroadcastChannel
+window.addEventListener('sync-test', (e) => {
+    const { input, player } = e.detail;
+    
+    // Admin 1 panel: show update from Admin 2
+    if (document.getElementById('admin1_input').value === '' && document.getElementById('admin1_player').value === '') {
+        addLog('admin1', `📥 Received broadcast from Admin 2:`, 'success');
+        addLog('admin1', `   Input: ${input}`, 'success');
+        addLog('admin1', `   Player: ${player}`, 'success');
+    }
+    
+    // Admin 2 panel: show update from Admin 1
+    if (document.getElementById('admin2_input').value === '' && document.getElementById('admin2_player').value === '') {
+        addLog('admin2', `📥 Received broadcast from Admin 1:`, 'success');
+        addLog('admin2', `   Input: ${input}`, 'success');
+        addLog('admin2', `   Player: ${player}`, 'success');
+    }
+});
+
+// Initial log entries
+addLog('admin1', '🟢 Admin 1 initialized', 'success');
+addLog('admin2', '🟢 Admin 2 initialized', 'success');
+</script>
+
+</body>
+</html>

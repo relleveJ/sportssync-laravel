@@ -1,7 +1,24 @@
 <?php
   require_once __DIR__ . '/../auth.php';
-  $user    = requireRole('scorekeeper');
+  $user    = requireRole('admin', 'superadmin');
   $matchId = isset($_GET['match_id']) ? (int)$_GET['match_id'] : null;
+?>
+<?php
+if (!defined('LARAVEL_WRAPPER')) {
+    require_once __DIR__ . '/../auth.php';
+    requireRole('admin');
+}
+// ── SportSync Guards ──────────────────────────────────────────
+$__sg=null;foreach([__DIR__,__DIR__.'/..',__DIR__.'/../..'] as $__d){if(file_exists($__d.'/system_guard.php')){$__sg=$__d.'/system_guard.php';break;}}if($__sg) require_once $__sg;
+$_pdo_guard = null;
+try {
+    $__dbf = file_exists(__DIR__.'/db.php') ? __DIR__.'/db.php' : (file_exists(__DIR__.'/../db.php') ? __DIR__.'/../db.php' : null);
+    if ($__dbf) { require_once $__dbf; $_pdo_guard = $pdo ?? null; }
+} catch (Throwable $e) {}
+if ($_pdo_guard) {
+    ss_check_maintenance($_pdo_guard, true);
+    ss_check_sport($_pdo_guard, 'Volleyball', true);
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -17,20 +34,47 @@ window.__role     = <?= json_encode($user['role']) ?>;
 window.__matchId  = <?= json_encode($matchId) ?>;
 window.__wsToken  = '';
 </script>
+<script>
+// Ensure legacy-compatible SS_* cookies exist for raw PHP endpoints when page
+// is opened directly (middleware may not have run). This is a safe client-side
+// fallback to help state POSTs reach legacy endpoints that read $_COOKIE.
+(function(){
+  try {
+    if (typeof window.__userId !== 'undefined' && window.__userId !== null) {
+      var exp = new Date(Date.now() + 8*3600*1000).toUTCString();
+      var secure = location.protocol === 'https:' ? '; Secure' : '';
+      document.cookie = 'SS_USER_ID=' + encodeURIComponent(String(window.__userId)) + ';path=/;expires=' + exp + ';SameSite=Lax' + secure;
+      if (typeof window.__role !== 'undefined') {
+        document.cookie = 'SS_ROLE=' + encodeURIComponent(String(window.__role)) + ';path=/;expires=' + exp + ';SameSite=Lax' + secure;
+      }
+    }
+  } catch (e) { try { console.warn('SS cookie fallback failed', e); } catch(_) {} }
+})();
+</script>
 </head>
-<body>
+<body data-sport="volleyball">
+<?php if (!empty($_pdo_guard)) ss_render_banners(); ?>
 
 <!-- NAV -->
 <nav>
   <div class="nav-score-left">
     <div class="nav-left-actions">
-      <button class="btn-reset" onclick="resetMatch()" title="Reset match and clear all data">Reset</button>
+      <a href="/" class="back-btn">&#8592; Back to Dashboard</a>
+      <button class="volleyball-btn-reset" onclick="resetMatch()" title="Reset match and clear all data">Reset</button>
+      <button class="btn-new" onclick="newMatch()" title="Create a new match and broadcast to all admins">➕ New Match</button>
+      <button class="btn-matches" onclick="window.open('volleyball_matches_admin.php','_blank')" title="Open match history">📚 Matches</button>
     </div>
   </div>
   <div class="nav-center">
     <div class="nav-score-pill team-a">
       <span class="nav-score-team" id="labelA">TEAM A</span>
-      <span class="nav-score-num"  id="scoreA">0</span>
+      <div class="score-controls">
+        <span class="nav-score-num" id="scoreA">0</span>
+        <div class="score-buttons">
+          <button class="score-btn plus" onclick="adjustTeamScore('teamA', 1)">+</button>
+          <button class="score-btn minus" onclick="adjustTeamScore('teamA', -1)">−</button>
+        </div>
+      </div>
       <span class="nav-live-badge">&#9679; LIVE</span>
     </div>
     <span class="nav-vs">VS</span>
@@ -41,22 +85,26 @@ window.__wsToken  = '';
     <span class="nav-vs">VS</span>
     <div class="nav-score-pill team-b">
       <span class="nav-score-team" id="labelB">TEAM B</span>
-      <span class="nav-score-num"  id="scoreB">0</span>
+      <div class="score-controls">
+        <span class="nav-score-num" id="scoreB">0</span>
+        <div class="score-buttons">
+          <button class="score-btn plus" onclick="adjustTeamScore('teamB', 1)">+</button>
+          <button class="score-btn minus" onclick="adjustTeamScore('teamB', -1)">−</button>
+        </div>
+      </div>
       <span class="nav-live-badge">&#9679; LIVE</span>
     </div>
   </div>
   <div class="nav-score-right">
     <button class="btn-view-toggle two-sided" id="viewToggleBtn" onclick="toggleViewMode()" title="Switch view">&#8644; Two-Sided</button>
     <button class="btn-save" onclick="saveFile()">&#128190; Save</button>
-    <a href="../landingpage.php" class="back-btn">← Back to sports</a>
   </div>
 </nav>
 
 <!-- COMMITTEE BAR -->
-<div class="committee-bar">
-  <label class="committee-label" for="committeeInput">Committee / Official:</label>
-  <input type="text" id="committeeInput" class="committee-input" placeholder="Enter committee or official name&#8230;" />
-</div>
+<div class="vbCommitteeBar">
+  <label class="vbCommitteeLabel" for="vbCommitteeInput">Committee / Official:</label>
+  <input type="text" id="vbCommitteeInput" class="vbCommitteeInput" placeholder="Enter committee or official name&#8230;" />  <button class="btn-save" onclick="lockPlayers()" title="Lock current roster and lineup without leaving this page">🔒 LOCK IN PLAYERS</button></div>
 
 <!-- MAIN GRID -->
 <div class="main-grid" id="mainGrid">
@@ -104,7 +152,7 @@ window.__wsToken  = '';
             <th style="width:36px">No.</th>
             <th style="min-width:96px;text-align:left;padding-left:8px">Player Name</th>
             <th class="pts-head" style="min-width:58px">PTS</th>
-            <th>SPIKE</th><th>ACE</th><th>EX SET</th><th>EX DIG</th>
+            <th>SPIKE</th><th>ACE</th><th>EX SET</th><th>EX DIG</th><th>BLK</th>
             <th>DEL</th>
           </tr></thead>
           <tbody id="tbodyA"></tbody>
@@ -151,7 +199,7 @@ window.__wsToken  = '';
             <th style="width:36px">No.</th>
             <th style="min-width:96px;text-align:left;padding-left:8px">Player Name</th>
             <th class="pts-head" style="min-width:58px">PTS</th>
-            <th>SPIKE</th><th>ACE</th><th>EX SET</th><th>EX DIG</th>
+            <th>SPIKE</th><th>ACE</th><th>EX SET</th><th>EX DIG</th><th>BLK</th>
             <th>DEL</th>
           </tr></thead>
           <tbody id="tbodyB"></tbody>

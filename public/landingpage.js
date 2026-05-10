@@ -239,3 +239,62 @@ const $$ = (sel, ctx = document) => [...ctx.querySelectorAll(sel)];
   init();
   animate();
 })();
+
+/* ══════════════════════════════════════════════
+   8. THEME TOGGLE — persistent light/dark mode
+   ══════════════════════════════════════════════ */
+(function initThemeToggle() {
+  const toggle = document.getElementById('theme-toggle');
+  if (!toggle) return;
+
+  const root = document.documentElement;
+  // Use a per-user storage key when a user is authenticated. This prevents
+  // theme preferences from leaking between accounts on the same browser.
+  const userId = (typeof window.SS_USER_ID !== 'undefined' && window.SS_USER_ID !== null)
+    ? String(window.SS_USER_ID)
+    : null;
+
+  const STORAGE_KEY = userId ? `site-theme:user:${userId}` : 'site-theme:guest';
+
+  const apply = (theme, save = true) => {
+    if (theme === 'light') {
+      root.classList.add('light-mode');
+      toggle.innerHTML = '☀️';
+      toggle.setAttribute('aria-pressed', 'true');
+    } else {
+      root.classList.remove('light-mode');
+      toggle.innerHTML = '🌙';
+      toggle.setAttribute('aria-pressed', 'false');
+    }
+    if (save) {
+      try { localStorage.setItem(STORAGE_KEY, theme); } catch (e) { /* ignore */ }
+    }
+  };
+
+  // Read stored preference for the current user (or guest). For guests we
+  // fall back to the legacy key `site-theme` for backward compatibility.
+  const readStored = () => {
+    try { return localStorage.getItem(STORAGE_KEY); } catch (e) { return null; }
+  };
+
+  let stored = readStored();
+  const prefersLight = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches;
+
+  if (stored) {
+    apply(stored, false);
+  } else if (!userId) {
+    // Guest: allow legacy preference if present, otherwise system default
+    let legacy = null;
+    try { legacy = localStorage.getItem('site-theme'); } catch (e) { legacy = null; }
+    if (legacy) apply(legacy, false);
+    else apply(prefersLight ? 'light' : 'dark', false);
+  } else {
+    // Authenticated user with no stored pref — start with system default
+    apply(prefersLight ? 'light' : 'dark', false);
+  }
+
+  toggle.addEventListener('click', () => {
+    const next = root.classList.contains('light-mode') ? 'dark' : 'light';
+    apply(next, true);
+  });
+})();

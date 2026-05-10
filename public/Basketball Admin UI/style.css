@@ -90,7 +90,7 @@ nav {
   gap: 8px;
   align-items: center;
 }
-.nav-left-actions .btn-reset,
+.nav-left-actions .basketball-btn-reset,
 .nav-left-actions .btn-delete-server {
   border: none;
   padding: 7px 12px;
@@ -103,12 +103,12 @@ nav {
   text-transform: uppercase;
   transition: transform 0.08s ease, filter 0.12s ease, background 0.12s ease;
 }
-.nav-left-actions .btn-reset {
+.nav-left-actions .basketball-btn-reset {
   background: #e74c3c;
   color: #fff;
   box-shadow: 0 2px 8px rgba(231,76,60,0.12);
 }
-.nav-left-actions .btn-reset:hover { filter: brightness(1.06); transform: translateY(-1px); }
+.nav-left-actions .basketball-btn-reset:hover { filter: brightness(1.06); transform: translateY(-1px); }
 .nav-left-actions .btn-delete-server {
   background: #111;
   color: var(--nav-yellow);
@@ -122,7 +122,7 @@ nav {
 
 @media (max-width: 760px) {
   .nav-left-actions { gap:6px; }
-  .nav-left-actions .btn-reset,
+  .nav-left-actions .basketball-btn-reset,
   .nav-left-actions .btn-delete-server { padding:6px 8px; font-size:11px; }
 }
 
@@ -195,6 +195,31 @@ nav {
   letter-spacing: -1px;
   transition: transform 0.12s ease;
   display: block;
+}
+.nav-score-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.nav-score-btn {
+  border: none;
+  background: #111;
+  color: var(--nav-yellow);
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  font-weight: 800;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.08s ease, filter 0.12s ease;
+}
+.nav-score-btn:active { transform: scale(0.94); }
+@media (max-width:520px) {
+  .nav-score-row { gap:6px; }
+  .nav-score-btn { width:24px; height:24px; }
+  .nav-score-num { font-size:24px; }
 }
 .nav-live-badge {
   display: inline-flex;
@@ -434,7 +459,7 @@ nav {
 /* ══════════════════════════════════════
    TOGGLE BUTTON (nav)
 ══════════════════════════════════════ */
-.btn-view-toggle {
+.bbBtnViewToggle {
   background: #222;
   color: #aaa;
   border: 1px solid #444;
@@ -449,8 +474,8 @@ nav {
   transition: background 0.15s, color 0.15s, border-color 0.15s;
   white-space: nowrap;
 }
-.btn-view-toggle:hover { background: #333; color: #fff; border-color: #666; }
-.btn-view-toggle.two-sided { background: #F5C518; color: #111; border-color: #F5C518; }
+.bbBtnViewToggle:hover { background: #333; color: #fff; border-color: #666; }
+.bbBtnViewToggle.two-sided { background: #F5C518; color: #111; border-color: #F5C518; }
 
 /* ══════════════════════════════════════
    COLUMN HEADERS
@@ -609,7 +634,7 @@ nav {
 }
 .pts-cell .stat-val { color: var(--yellow-accent); font-size: 16px; }
 
-.sbtn {
+.bbSbtn {
   border: none;
   cursor: pointer;
   font-family: 'Oswald', sans-serif;
@@ -623,10 +648,10 @@ nav {
   display: inline-flex; align-items: center; justify-content: center;
   flex-shrink: 0;
 }
-.sbtn:active { transform: scale(0.88); }
-.sbtn.plus  { background: var(--yellow-accent); color: #111; order: 1; }
-.sbtn.minus { background: var(--red-btn); color: #fff; order: 3; }
-.sbtn:hover { filter: brightness(1.2); }
+.bbSbtn:active { transform: scale(0.88); }
+.bbSbtn.plus  { background: var(--yellow-accent); color: #111; order: 1; }
+.bbSbtn.minus { background: var(--red-btn); color: #fff; order: 3; }
+.bbSbtn:hover { filter: brightness(1.2); }
 
 /* tech foul tiny buttons */
 .tbtn {
@@ -646,7 +671,7 @@ nav {
 .tbtn:hover { filter: brightness(1.2); }
 
 /* DEL button */
-.btn-del {
+.bbBtnDel {
   background: var(--red-btn);
   color: #fff;
   border: none;
@@ -657,15 +682,15 @@ nav {
   font-weight: 700;
   transition: filter 0.15s, transform 0.1s;
 }
-.btn-del:hover { filter: brightness(1.2); }
-.btn-del:active { transform: scale(0.92); }
+.bbBtnDel:hover { filter: brightness(1.2); }
+.bbBtnDel:active { transform: scale(0.92); }
 
 /* ADD PLAYER */
 .add-player-wrap {
   padding: 10px 12px;
   border-top: 1px solid #1e1e1e;
 }
-.btn-add-player {
+.bbBtnAddPlayer {
   background: transparent;
   border: 1px dashed #383838;
   color: var(--yellow-accent);
@@ -680,7 +705,7 @@ nav {
   text-transform: uppercase;
   transition: border-color 0.2s, background 0.2s;
 }
-.btn-add-player:hover { border-color: var(--yellow-accent); background: rgba(245,197,24,0.06); }
+.bbBtnAddPlayer:hover { border-color: var(--yellow-accent); background: rgba(245,197,24,0.06); }
 
 /* ══════════════════════════════════════
    RIGHT PANEL COUNTERS
@@ -991,7 +1016,7 @@ nav {
   vertical-align: middle;
   padding: 4px 3px;
 }
-.player-cb {
+.bbPlayerCb {
   width: 17px;
   height: 17px;
   cursor: pointer;
@@ -1009,7 +1034,7 @@ nav {
   align-items: center;
   gap: 5px;
 }
-.select-all-cb {
+.bbSelectAllCb {
   width: 16px;
   height: 16px;
   cursor: pointer;
@@ -1041,7 +1066,7 @@ nav {
 .player-main-row.row-checked + .player-tech-row { background: rgba(245,197,24,0.04); }
 
 /* ── COMMITTEE BAR ── */
-.committee-bar {
+.bbCommitteeBar {
   background: #181818;
   border-bottom: 1px solid #252525;
   padding: 8px 20px;
@@ -1049,7 +1074,7 @@ nav {
   align-items: center;
   gap: 12px;
 }
-.committee-label {
+.bbCommitteeLabel {
   font-family: 'Oswald', sans-serif;
   font-size: 11px;
   font-weight: 600;
@@ -1058,7 +1083,7 @@ nav {
   text-transform: uppercase;
   white-space: nowrap;
 }
-.committee-input {
+.bbCommitteeInput {
   background: #111;
   border: 1px solid #333;
   border-radius: 4px;
@@ -1071,4 +1096,4 @@ nav {
   max-width: 100%;
   transition: border-color 0.2s;
 }
-.committee-input:focus { border-color: #F5C518; }
+.bbCommitteeInput:focus { border-color: #F5C518; }

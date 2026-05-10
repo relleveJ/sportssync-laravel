@@ -514,7 +514,7 @@ img { display: block; max-width: 100%; }
   margin: 0 auto;
   padding: 72px 32px 48px;
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, 1fr);
   gap: 48px;
   align-items: start;
 }
@@ -614,7 +614,7 @@ img { display: block; max-width: 100%; }
     transition: max-height 0.4s ease;
   }
   .nav-links.open {
-    max-height: 320px;
+    max-height: calc(100vh - var(--nav-h));
     border-bottom: 1px solid var(--border);
   }
   .nav-link {
@@ -624,6 +624,19 @@ img { display: block; max-width: 100%; }
     font-size: 1rem;
   }
   .nav-link::after { display: none; }
+
+  /* Mobile-only list items styling */
+  .nav-links .mobile-only {
+    display: block;
+    padding: 14px 32px;
+    border-bottom: 1px solid var(--border);
+    color: var(--gray-light);
+  }
+  .nav-links .mobile-only .nav-user {
+    display: block;
+    color: var(--yellow);
+    font-weight: 600;
+  }
 
   /* Sports */
   .sports-grid { grid-template-columns: repeat(2, 1fr); gap: 16px; }
@@ -716,4 +729,76 @@ img { display: block; max-width: 100%; }
 
 @media (max-width: 768px) {
   .nav-auth { display: none; }
+}
+
+/* Theme toggle button (navbar) */
+.nav-theme-toggle {
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.06);
+  color: var(--white);
+  padding: 8px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.95rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.light-mode .nav-theme-toggle {
+  color: var(--black);
+  border-color: rgba(0,0,0,0.08);
+}
+
+/* Navbar light-mode overrides for readable contrast */
+.light-mode .navbar {
+  background: rgba(255,255,255,0.95);
+  border-bottom: 1px solid var(--border);
+}
+.light-mode .nav-links {
+  background: rgba(255,255,255,0.98);
+}
+.light-mode .nav-link,
+.light-mode .nav-user,
+.light-mode .nav-auth-btn,
+.light-mode .nav-logo {
+  color: var(--white) !important;
+}
+.light-mode .hamburger span {
+  background: var(--white);
+}
+.light-mode .nav-login { border-color: var(--border); }
+.light-mode .nav-logout { border-color: var(--border); color: var(--gray-light); }
+
+/* Mobile-only helper */
+.mobile-only { display: none; }
+@media (max-width: 768px) {
+  .mobile-only { display: block; }
+}
+
+/* Footer contact column */
+.footer-contact { color: var(--gray); }
+.footer-contact .footer-nav-title { margin-bottom: 12px; }
+.footer-contact-line { margin: 6px 0; color: var(--gray-light); }
+
+/* Light mode variable overrides */
+.light-mode {
+  --black:        #f8fafc;
+  --black-mid:    #ffffff;
+  --black-card:   #ffffff;
+  --deep-blue:    #e6f3ff;
+  --blue:         #1e3a8a;
+  --blue-light:   #2563eb;
+  --yellow:       #d97706;
+  --yellow-dim:   rgba(217,119,6,0.08);
+  --yellow-glow:  rgba(217,119,6,0.18);
+  --white:        #0b1220;
+  --gray:         #4b5563;
+  --gray-light:   #6b7280;
+  --border:       rgba(11,18,32,0.06);
+}
+
+/* Ensure theme toggle shows on mobile in nav menu */
+@media (max-width: 768px) {
+  .nav-auth { display: none; }
+  .nav-theme-toggle { display: inline-flex; }
 }

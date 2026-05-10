@@ -65,6 +65,38 @@ if (!empty($sets) && is_array($sets)) {
   @file_put_contents($logPath, date('[Y-m-d H:i:s] ') . "normalized sets for match {$matchId}: " . print_r($sets, true) . "\n", FILE_APPEND);
 }
 
+// Ensure we have a full contiguous list of sets for display (1..max(best_of, observed))
+// and fill missing set numbers with empty placeholders to avoid missing entries in the report.
+$bestOf = isset($match['best_of']) ? (int)$match['best_of'] : 3;
+$indexed = [];
+if (!empty($sets) && is_array($sets)) {
+  foreach ($sets as $s) {
+    $indexed[(int)$s['set_number']] = $s;
+  }
+}
+$observedMax = 0;
+if (!empty($indexed)) $observedMax = max(array_keys($indexed));
+$expectedMax = max(1, $bestOf, $observedMax);
+$complete = [];
+for ($i = 1; $i <= $expectedMax; $i++) {
+  if (isset($indexed[$i])) {
+    $complete[] = $indexed[$i];
+  } else {
+    $complete[] = [
+      'set_number' => $i,
+      'team_a_score' => 0,
+      'team_b_score' => 0,
+      'team_a_timeout_used' => 0,
+      'team_b_timeout_used' => 0,
+      'serving_team' => 'A',
+      'set_winner' => null
+    ];
+  }
+}
+$sets = $complete;
+$logPath = defined('LARAVEL_WRAPPER') ? storage_path('logs/legacy/badminton_debug.log') : __DIR__ . '/badminton_debug.log';
+@file_put_contents($logPath, date('[Y-m-d H:i:s] ') . "expanded sets for match {$matchId} up to best_of={$bestOf}: " . print_r($sets, true) . "\n", FILE_APPEND);
+
 // ── Fetch match summary (if declared) ───────────────────────
 $stmt = $mysqli->prepare('SELECT * FROM badminton_match_summary WHERE match_id = ? LIMIT 1');
 $stmt->bind_param('i', $matchId);
@@ -79,10 +111,13 @@ foreach ($sets as $s) {
   if (($s['set_winner'] ?? null) === 'A') $teamASetWins++;
   elseif (($s['set_winner'] ?? null) === 'B') $teamBSetWins++;
 }
-// Override with summary if available
+// Prefer live set counts unless the stored summary clearly reflects the same or more recorded sets
 if ($summary) {
-    $teamASetWins = (int)$summary['team_a_sets_won'];
-    $teamBSetWins = (int)$summary['team_b_sets_won'];
+    $summarySetsPlayed = isset($summary['total_sets_played']) ? (int)$summary['total_sets_played'] : 0;
+    if ($summarySetsPlayed > 0 && $summarySetsPlayed >= $observedMax) {
+        $teamASetWins = (int)$summary['team_a_sets_won'];
+        $teamBSetWins = (int)$summary['team_b_sets_won'];
+    }
 }
 
 // ── Determine overall winner ─────────────────────────────────
@@ -97,7 +132,13 @@ if ($summary && !empty($summary['winner_name'])) {
 }
 
 // ── Compute additional aggregates and persist summary ─────────
-$totalSetsPlayed = count($sets);
+$totalSetsPlayed = 0;
+// Total sets played should reflect sets with recorded activity (non-zero scores or declared winner)
+foreach ($sets as $s) {
+  if (!empty($s) && ((int)($s['team_a_score'] ?? 0) !== 0 || (int)($s['team_b_score'] ?? 0) !== 0 || !empty($s['set_winner']))) {
+    $totalSetsPlayed++;
+  }
+}
 $teamATotalPts = $teamATotalPts ?? 0; // ensure defined
 $teamBTotalPts = $teamBTotalPts ?? 0;
 
@@ -174,6 +215,7 @@ $teamATotalTO    = 0;
 $teamBTotalTO    = 0;
 $lastSetAScore   = 0;
 $lastSetBScore   = 0;
+$lastPlayedSet   = null;
 foreach ($sets as $i => $s) {
   $sep = ($i < count($sets) - 1) ? ' | ' : '';
   $teamASetStr     .= 'Set' . ((int)$s['set_number']) . ': ' . ((int)$s['team_a_score']) . $sep;
@@ -184,12 +226,17 @@ foreach ($sets as $i => $s) {
   $teamBTotalPts   += (int)$s['team_b_score'];
   $teamATotalTO    += (int)$s['team_a_timeout_used'];
   $teamBTotalTO    += (int)$s['team_b_timeout_used'];
-  $lastSetAScore    = (int)$s['team_a_score'];
-  $lastSetBScore    = (int)$s['team_b_score'];
+  if (((int)$s['team_a_score'] !== 0) || ((int)$s['team_b_score'] !== 0) || !empty($s['set_winner'])) {
+    $lastPlayedSet = $s;
+  }
+}
+if ($lastPlayedSet) {
+  $lastSetAScore = (int)$lastPlayedSet['team_a_score'];
+  $lastSetBScore = (int)$lastPlayedSet['team_b_score'];
 }
 // Current/last set point display (mirroring JS "score" = current set score)
-$currentSetNum  = count($sets) > 0 ? (int)$sets[count($sets)-1]['set_number'] : 1;
-$servingTeam    = count($sets) > 0 ? ($sets[count($sets)-1]['serving_team'] ?? 'A') : 'A';
+$currentSetNum  = $lastPlayedSet ? (int)$lastPlayedSet['set_number'] : 1;
+$servingTeam    = $lastPlayedSet ? ($lastPlayedSet['serving_team'] ?? 'A') : 'A';
 $servingName    = $servingTeam === 'A' ? $match['team_a_name'] : $match['team_b_name'];
 
 // JSON payload for Excel export (SheetJS)
@@ -507,13 +554,15 @@ $jsonMatch = json_encode([
 
 <!-- EXPORT TOOLBAR -->
 <div class="export-bar">
-  <a class="btn-export" href="badminton_admin.php" style="background:transparent;color:#FFE600;border:0;font-family:'Oswald',sans-serif;font-weight:700;letter-spacing:1px;text-decoration:none;margin-right:auto">&#8592; Back to Admin</a>
-  <button class="btn-export" style="background:transparent;color:#FFE600;border:0;font-family:'Oswald',sans-serif;font-weight:700;letter-spacing:1px;text-decoration:none;margin-left:6px;cursor:pointer" onclick="window.open('badminton_matches_admin.php','_blank')">📚 Match History</button>
-  <button class="btn-export" style="background:transparent;color:#FFE600;border:0;font-family:'Oswald',sans-serif;font-weight:700;letter-spacing:1px;text-decoration:none;margin-left:6px;cursor:pointer" onclick="window.open('../TABLE TENNIS ADMIN UI/tabletennis_matches_admin.php','_blank')">🏓 TT Matches</button>
+  <a class="btn-export" href="/" style="background:transparent;color:#FFE600;border:0;font-family:'Oswald',sans-serif;font-weight:700;letter-spacing:1px;text-decoration:none;margin-right:8px">&#8592; Back to Dashboard</a>
+  <button class="btn-export" style="background:transparent;color:#FFE600;border:0;font-family:'Oswald',sans-serif;font-weight:700;letter-spacing:1px;cursor:pointer;margin-right:6px" onclick="window.open('badminton_matches_admin.php','_blank')">📚 Match History</button>
+  <button class="btn-export" style="background:transparent;color:#FFFFFF;border:0;font-family:'Oswald',sans-serif;font-weight:700;letter-spacing:1px;cursor:pointer;margin-right:6px" onclick="window.open('badminton_matches_admin.php','_blank')">📚 Match History</button>
+  <button class="btn-export" style="background:transparent;color:#FFE600;border:0;font-family:'Oswald',sans-serif;font-weight:700;letter-spacing:1px;text-decoration:none;margin-left:6px;cursor:pointer" onclick="newMatch()">➕ New Match</button>
   <span class="bar-title">&#127944; Badminton Report — Match #<?= $matchId ?></span>
-  <!-- Reset moved to Matches Admin page -->
-  <button class="btn-export btn-excel" onclick="exportExcel()">&#11015; Export Excel</button>
-  <button class="btn-export btn-print" onclick="window.print()">&#128438; Print PDF</button>
+  <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+    <button class="btn-export btn-excel" onclick="exportExcel()">&#11015; Export Excel</button>
+    <button class="btn-export btn-print" onclick="window.print()">&#128438; Print PDF</button>
+  </div>
 </div>
 
 <div class="container">
@@ -533,6 +582,15 @@ $jsonMatch = json_encode([
       <div class="ic-label">Match Type</div>
       <div class="ic-value"><?= $matchType ?></div>
     </div>
+
+    <script>
+    function newMatch(){
+      try { localStorage.removeItem('badmintonMatchState'); } catch(e){}
+      try { localStorage.removeItem('badmintonAdminState'); } catch(e){}
+      try { sessionStorage.removeItem('badminton_match_id'); } catch(e){}
+      window.location.href = 'badminton_admin.php';
+    }
+    </script>
     <div class="info-card">
       <div class="ic-label">Best Of</div>
       <div class="ic-value"><?= $bestOf ?></div>
