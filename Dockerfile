@@ -43,5 +43,4 @@ COPY supervisor.conf /etc/supervisor/conf.d/supervisor.conf
 EXPOSE 80
 
 # Start supervisor (runs Apache + WebSockets)
-CMD ["/usr/bin/supervisord", "-n"]
-
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisor.conf", "-n"]
